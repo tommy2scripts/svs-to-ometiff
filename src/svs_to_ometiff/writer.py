@@ -11,7 +11,7 @@ import os
 import time
 from collections.abc import Callable
 from typing import Optional
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import quoteattr
 
 import numpy as np
 import tifffile
@@ -55,7 +55,7 @@ def build_ome_xml(
     if mpp <= 0:
         raise ValueError(f"mpp must be positive, got {mpp}")
 
-    escaped_image_name = escape(image_name, {'"': "&quot;"})
+    image_name_attr = quoteattr(image_name)
 
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -63,7 +63,7 @@ def build_ome_xml(
         '     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
         '     xsi:schemaLocation="http://www.openmicroscopy.org/Schemas/OME/2016-06'
         ' http://www.openmicroscopy.org/Schemas/OME/2016-06/ome.xsd">\n'
-        f'  <Image ID="Image:0" Name="{escaped_image_name}">\n'
+        f"  <Image ID=\"Image:0\" Name={image_name_attr}>\n"
         '    <Pixels ID="Pixels:0"\n'
         '            DimensionOrder="XYZCT"\n'
         '            Type="uint8"\n'
