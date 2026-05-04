@@ -43,9 +43,15 @@ def read_svs_metadata(svs_path: str) -> dict[str, Any]:
 
         offsets = list(page0.dataoffsets)
         bytecounts = list(page0.databytecounts)
-        desc = page0.tags["ImageDescription"].value
+        try:
+            desc = page0.tags["ImageDescription"].value
+        except KeyError as exc:
+            raise ValueError("Input SVS is missing ImageDescription metadata") from exc
         mpp = parse_mpp_from_description(desc)
-        compression = int(page0.tags["Compression"].value)
+        try:
+            compression = int(page0.tags["Compression"].value)
+        except KeyError as exc:
+            raise ValueError("Input SVS is missing Compression tag") from exc
 
     n_tiles_x = math.ceil(img_w / src_tile_w)
     n_tiles_y = math.ceil(img_h / src_tile_h)
@@ -55,6 +61,11 @@ def read_svs_metadata(svs_path: str) -> dict[str, Any]:
         raise ValueError(
             f"Tile count mismatch: expected {total_tiles} from grid "
             f"({n_tiles_x}x{n_tiles_y}), got {len(offsets)} from file"
+        )
+    if len(bytecounts) != total_tiles:
+        raise ValueError(
+            f"Tile byte-count mismatch: expected {total_tiles} from grid "
+            f"({n_tiles_x}x{n_tiles_y}), got {len(bytecounts)} from file"
         )
 
     return {
@@ -89,14 +100,45 @@ def parse_mpp_from_description(description: str) -> float:
     """
     for part in description.split("|"):
         part = part.strip()
-        if part.startswith("MPP"):
+        key, sep, value = part.partition("=")
+        if key.strip().upper() == "MPP":
+            if not sep:
+                raise ValueError(f"Could not parse MPP from description field: {part}")
             try:
-                return float(part.split("=")[1].strip())
-            except (IndexError, ValueError) as exc:
+                mpp = float(value.strip())
+            except ValueError as exc:
                 raise ValueError(
                     f"Could not parse MPP from description field: {part}"
                 ) from exc
+            if mpp <= 0:
+                raise ValueError(f"MPP must be positive, got {mpp}")
+            return mpp
     raise ValueError("MPP not found in ImageDescription tag")
+
+
+def _decode_tile_payload(
+    raw: bytes,
+    *,
+    full_tile_width: int,
+    full_tile_height: int,
+    visible_width: int,
+    visible_height: int,
+) -> np.ndarray:
+    """Decode either full padded tile payloads or cropped edge tile payloads."""
+    full_size_bytes = full_tile_width * full_tile_height * 2
+    if len(raw) == full_size_bytes:
+        return yuyv_to_rgb(raw, full_tile_width, full_tile_height)
+
+    cropped_size_bytes = visible_width * visible_height * 2
+    if len(raw) == cropped_size_bytes:
+        return yuyv_to_rgb(raw, visible_width, visible_height)
+
+    raise ValueError(
+        "Unexpected YUYV tile byte count: "
+        f"got {len(raw)}, expected {full_size_bytes} for full "
+        f"{full_tile_width}x{full_tile_height} tile"
+        f" or {cropped_size_bytes} for visible {visible_width}x{visible_height} tile"
+    )
 
 
 def read_svs_full_image(
@@ -174,7 +216,13 @@ def read_svs_full_image(
                 idx = tile_idx[(ty, tx)]
                 fh.seek(offsets[idx])
                 raw = fh.read(bytecounts[idx])
-                tile_rgb = yuyv_to_rgb(raw, src_tile_w, src_tile_h)
+                tile_rgb = _decode_tile_payload(
+                    raw,
+                    full_tile_width=src_tile_w,
+                    full_tile_height=src_tile_h,
+                    visible_width=x1 - x0,
+                    visible_height=y1 - y0,
+                )
 
                 # Place tile, cropping to image bounds (handles edge tiles)
                 full_img[y0:y1, x0:x1] = tile_rgb[: y1 - y0, : x1 - x0]

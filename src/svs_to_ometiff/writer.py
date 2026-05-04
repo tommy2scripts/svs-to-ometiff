@@ -2,17 +2,30 @@
 OME-TIFF writer with SubIFD pyramid linkage.
 
 Writes a multi-resolution pyramidal OME-TIFF using tifffile's TiffWriter
-with proper SubIFD structure. The subifds parameter on the full-resolution
-IFD declares the sub-resolution levels, enabling proper pyramid detection
-by downstream tools (tifffile, napari, QuPath, Xenium Explorer, etc.).
+with SubIFD structure. The subifds parameter on the full-resolution IFD
+declares the sub-resolution levels, enabling pyramid detection in readers
+that support SubIFD-linked pyramids.
 """
 
 import os
 import time
+from collections.abc import Callable
 from typing import Optional
+from xml.sax.saxutils import escape
 
 import numpy as np
 import tifffile
+
+ProgressLogger = Callable[[str], None]
+
+
+def _log(verbose: bool, logger: Optional[ProgressLogger], message: str) -> None:
+    if not verbose:
+        return
+    if logger is None:
+        print(message)
+    else:
+        logger(message)
 
 
 def build_ome_xml(
@@ -35,13 +48,22 @@ def build_ome_xml(
     Returns:
         OME-XML string.
     """
+    if full_width <= 0 or full_height <= 0:
+        raise ValueError(
+            f"OME image dimensions must be positive, got {full_width}x{full_height}"
+        )
+    if mpp <= 0:
+        raise ValueError(f"mpp must be positive, got {mpp}")
+
+    escaped_image_name = escape(image_name, {'"': "&quot;"})
+
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<OME xmlns="http://www.openmicroscopy.org/Schemas/OME/2016-06"\n'
         '     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
         '     xsi:schemaLocation="http://www.openmicroscopy.org/Schemas/OME/2016-06'
         ' http://www.openmicroscopy.org/Schemas/OME/2016-06/ome.xsd">\n'
-        f'  <Image ID="Image:0" Name="{image_name}">\n'
+        f'  <Image ID="Image:0" Name="{escaped_image_name}">\n'
         '    <Pixels ID="Pixels:0"\n'
         '            DimensionOrder="XYZCT"\n'
         '            Type="uint8"\n'
@@ -72,6 +94,7 @@ def write_pyramidal_ometiff(
     compression: Optional[str] = "lzw",
     image_name: str = "Image",
     verbose: bool = True,
+    progress_logger: Optional[ProgressLogger] = None,
 ) -> None:
     """
     Write a pyramidal OME-TIFF with SubIFD-linked resolution levels.
@@ -79,8 +102,8 @@ def write_pyramidal_ometiff(
     The full-resolution image (pyramid[0]) is written as the base IFD with
     ``subifds=N-1`` pointing to the sub-resolution levels. Each sub-level is
     written as a SubIFD with ``subfiletype=1`` (reduced-resolution image).
-    This structure is detected as a proper pyramid by tifffile, napari,
-    QuPath, and other tools.
+    This structure is detected as a pyramid by tifffile and should be
+    compatible with readers that support SubIFD-linked pyramids.
 
     Uses BigTIFF format (required for images >4 GB), LZW lossless compression,
     and tiled storage.
@@ -95,21 +118,31 @@ def write_pyramidal_ometiff(
             or None for uncompressed output.
         image_name: Name for the OME Image element.
         verbose: Print progress information.
+        progress_logger: Optional callable used instead of print.
 
     Raises:
-        ValueError: If pyramid is empty or arrays have unexpected shapes.
+        ValueError: If pyramid is empty or arguments are invalid.
         OSError: If the output file cannot be written.
     """
     if not pyramid:
         raise ValueError("pyramid must contain at least one level")
+    if tile_size <= 0:
+        raise ValueError(f"tile_size must be positive, got {tile_size}")
+    if tile_size % 16 != 0:
+        raise ValueError(
+            f"tile_size must be divisible by 16 for tiled TIFF output, got {tile_size}"
+        )
+    if mpp <= 0:
+        raise ValueError(f"mpp must be positive, got {mpp}")
 
     full_img = pyramid[0]
-    if full_img.ndim != 3 or full_img.shape[2] != 3:
-        raise ValueError(
-            f"Full-resolution image must be (H, W, 3), got {full_img.shape}"
-        )
-    if full_img.dtype != np.uint8:
-        raise ValueError(f"Full-resolution image must be uint8, got {full_img.dtype}")
+    for level, img in enumerate(pyramid):
+        if img.ndim != 3 or img.shape[2] != 3:
+            raise ValueError(f"Pyramid level {level} must be (H, W, 3), got {img.shape}")
+        if img.dtype != np.uint8:
+            raise ValueError(f"Pyramid level {level} must be uint8, got {img.dtype}")
+        if img.shape[0] <= 0 or img.shape[1] <= 0:
+            raise ValueError(f"Pyramid level {level} has empty dimensions: {img.shape}")
 
     full_h, full_w = full_img.shape[:2]
 
@@ -119,12 +152,10 @@ def write_pyramidal_ometiff(
     # Remove existing file
     if os.path.exists(output_path):
         os.remove(output_path)
-        if verbose:
-            print(f"Removed existing file: {output_path}")
+        _log(verbose, progress_logger, f"Removed existing file: {output_path}")
 
-    if verbose:
-        print(f"Writing pyramidal OME-TIFF with SubIFD linkage...")
-        print(f"Levels: {[p.shape[:2] for p in pyramid]}")
+    _log(verbose, progress_logger, "Writing pyramidal OME-TIFF with SubIFD linkage...")
+    _log(verbose, progress_logger, f"Levels: {[p.shape[:2] for p in pyramid]}")
 
     t0 = time.time()
 
@@ -143,8 +174,7 @@ def write_pyramidal_ometiff(
             resolution=(1e4 / mpp, 1e4 / mpp),
             resolutionunit=tifffile.RESUNIT.CENTIMETER,
         )
-        if verbose:
-            print(f"  Level 0: {full_w}x{full_h} written")
+        _log(verbose, progress_logger, f"  Level 0: {full_w}x{full_h} written")
 
         # Write sub-resolution levels as SubIFDs
         for level in range(1, len(pyramid)):
@@ -157,11 +187,13 @@ def write_pyramidal_ometiff(
                 photometric="rgb",
                 metadata=None,
             )
-            if verbose:
-                print(f"  Level {level}: {img.shape[1]}x{img.shape[0]} written")
+            _log(
+                verbose,
+                progress_logger,
+                f"  Level {level}: {img.shape[1]}x{img.shape[0]} written",
+            )
 
     elapsed = time.time() - t0
     size_gb = os.path.getsize(output_path) / 1e9
 
-    if verbose:
-        print(f"\nDone in {elapsed:.0f}s, size={size_gb:.2f} GB")
+    _log(verbose, progress_logger, f"\nDone in {elapsed:.0f}s, size={size_gb:.2f} GB")

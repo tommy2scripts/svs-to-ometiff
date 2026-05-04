@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "svs-to-ometiff"
-version = "1.0.0"
+version = "0.1.0"
 description = "Convert Aperio SVS (compression 33007 / YUYV) to pyramidal OME-TIFF"
 readme = "README.md"
 license = {text = "MIT"}
@@ -39,6 +39,9 @@ Homepage = "https://github.com/tommytran/svs-to-ometiff"
 
 [tool.ruff]
 line-length = 88
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/svs_to_ometiff"]

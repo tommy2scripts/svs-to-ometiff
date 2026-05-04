@@ -1,9 +1,9 @@
 """
 YUYV (YCbCr 4:2:2 interleaved) to RGB decoder using BT.601 full-range conversion.
 
-Aperio compression tag 33007 stores tiles as raw YUYV planar YCbCr 4:2:2,
-which is NOT standard JPEG or JPEG 2000. Each 2-pixel block is encoded as
-4 bytes: [Y0, U, Y1, V]. This module decodes each tile to RGB.
+Observed Aperio compression tag 33007 tiles store raw YUYV YCbCr 4:2:2,
+which is not standard JPEG or JPEG 2000. Each 2-pixel block is encoded as
+4 bytes: [Y0, U, Y1, V]. This module decodes those tile payloads to RGB.
 
 Reference: ITU-R BT.601 (YCbCr to RGB, full-range, no headroom/footroom).
 """

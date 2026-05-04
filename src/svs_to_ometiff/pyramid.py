@@ -1,14 +1,26 @@
 """
 Pyramid builder for multi-resolution OME-TIFF generation.
 
-Creates a 6-level image pyramid from a full-resolution RGB image using
-2× block-averaging downsampling. This produces excellent quality for
-pathology images and is fast compared to interpolation-based methods.
+Creates a multi-level image pyramid from a full-resolution RGB image using
+block-averaging downsampling.
 """
 
 import time
+from collections.abc import Callable
+from typing import Optional
 
 import numpy as np
+
+ProgressLogger = Callable[[str], None]
+
+
+def _log(verbose: bool, logger: Optional[ProgressLogger], message: str) -> None:
+    if not verbose:
+        return
+    if logger is None:
+        print(message)
+    else:
+        logger(message)
 
 
 def build_pyramid(
@@ -17,6 +29,7 @@ def build_pyramid(
     downsample_factor: int = 2,
     *,
     verbose: bool = True,
+    progress_logger: Optional[ProgressLogger] = None,
 ) -> list[np.ndarray]:
     """
     Build a multi-resolution pyramid by iterative block averaging.
@@ -30,19 +43,28 @@ def build_pyramid(
         num_levels: Number of pyramid levels including full resolution.
         downsample_factor: Factor by which each level is reduced (default 2).
         verbose: Print progress information.
+        progress_logger: Optional callable used instead of print.
 
     Returns:
         List of numpy arrays from level 0 (full res) to level N-1 (coarsest),
         each of shape (H_i, W_i, 3).
 
     Raises:
-        ValueError: If num_levels < 1 or image dimensions are too small.
+        ValueError: If inputs are invalid or requested levels cannot be built.
     """
+    if full_image.ndim != 3 or full_image.shape[2] != 3:
+        raise ValueError(f"full_image must have shape (H, W, 3), got {full_image.shape}")
+    if full_image.dtype != np.uint8:
+        raise ValueError(f"full_image must be uint8, got {full_image.dtype}")
     if num_levels < 1:
         raise ValueError(f"num_levels must be at least 1, got {num_levels}")
+    if downsample_factor < 2:
+        raise ValueError(
+            f"downsample_factor must be at least 2, got {downsample_factor}"
+        )
 
     h, w = full_image.shape[:2]
-    if h < downsample_factor or w < downsample_factor:
+    if num_levels > 1 and (h < downsample_factor or w < downsample_factor):
         raise ValueError(
             f"Image ({w}x{h}) too small for downsampling by {downsample_factor}"
         )
@@ -58,6 +80,12 @@ def build_pyramid(
         # Crop to multiples of the downsample factor
         new_h = prev.shape[0] // factor
         new_w = prev.shape[1] // factor
+        if new_h < 1 or new_w < 1:
+            raise ValueError(
+                f"Cannot build level {level}: previous level "
+                f"{prev.shape[1]}x{prev.shape[0]} is too small for "
+                f"downsampling by {factor}"
+            )
         crop_h = new_h * factor
         crop_w = new_w * factor
 
@@ -71,13 +99,12 @@ def build_pyramid(
 
         pyramid.append(downsampled)
 
-        if verbose:
-            print(
-                f"  Level {level}: "
-                f"{downsampled.shape[1]} x {downsampled.shape[0]} px"
-            )
+        _log(
+            verbose,
+            progress_logger,
+            f"  Level {level}: {downsampled.shape[1]} x {downsampled.shape[0]} px",
+        )
 
-    if verbose:
-        print(f"Pyramid built in {time.time() - t0:.0f}s")
+    _log(verbose, progress_logger, f"Pyramid built in {time.time() - t0:.0f}s")
 
     return pyramid

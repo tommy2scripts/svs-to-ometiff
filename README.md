@@ -17,8 +17,9 @@ Compression tag `33007`. These files are often described as `JP2K-YCbCr`,
 YCbCr 4:2:2: each two-pixel pair is stored as `[Y0, U, Y1, V]`.
 
 Because 33007 is not a standard TIFF/JPEG/JPEG 2000 compression codec, common
-spatial biology tools fail before the image can be used for Xenium or Visium
-registration.
+spatial biology tools may fail before the image can be used for Xenium or
+Visium registration. The failures below have been observed in the validation
+context described in [Validation Status](#validation-status).
 
 | Tool | What fails | Typical error message |
 | --- | --- | --- |
@@ -96,9 +97,18 @@ The converter does three things:
   verify the source TIFF Compression tag is `33007` before relying on this
   converter.
 
+## What this does NOT do
+
+- Does **not** handle JPEG-compressed SVS (compression tag `7`) — use libvips or OpenSlide for those
+- Does **not** handle JPEG 2000-compressed SVS (compression tag `33003` or `33005`)
+- Does **not** validate color fidelity against a reference scanner profile
+- Has **not** been tested on frozen sections, IHC, or fluorescence slides
+- Does **not** recover from malformed or truncated tiles — may crash on corrupted SVS files
+
 ## Downstream Compatibility
 
-Outputs are intended to be standard pyramidal OME-TIFF files for:
+Outputs are intended to be pyramidal OME-TIFF files for downstream workflows
+such as:
 
 - Xenium Ranger and Xenium Explorer H&E registration/overlay workflows
 - Space Ranger image inputs after OME-TIFF conversion
@@ -138,8 +148,8 @@ around in the output.
 | Claim | Evidence | Confidence |
 |---|---|---|
 | YUYV decoder produces structurally correct RGB | Unit tests (grayscale, color tint, clipping); visual inspection of H&E tile | Medium |
-| OME-TIFF output passes tifffile validation | `is_ome=True`, `is_bigtiff=True`, 6 pyramid levels detected | High |
-| Pyramid SubIFD linkage works | `tifffile.TiffFile.series[0].levels` enumerates all 6 levels | High |
+| OME-TIFF output passes tifffile validation | `is_ome=True`, `is_bigtiff=True`, 6 pyramid levels detected | Medium-high |
+| Pyramid SubIFD linkage works in tifffile | `tifffile.TiffFile.series[0].levels` enumerates all 6 levels | Medium-high |
 | Synthetic 33007 SVS → valid OME-TIFF end-to-end | `test_integration.py` passes with known pixel values | Medium |
 | Works on real SVS file | 67174_PT_Lung.svs (AT2/GT450, lung SCC, post-Xenium H&E, 3.2 GB) | Single file |
 

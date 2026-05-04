@@ -13,6 +13,18 @@ import click
 from svs_to_ometiff.converter import convert
 
 
+def _print_experimental_warning() -> None:
+    """Print a prominent experimental-status warning to stderr."""
+    import sys
+    sys.stderr.write(
+        "⚠️  svs-to-ometiff v0.1.0 — EXPERIMENTAL\n"
+        "   Validated on 1 file (AT2/GT450, lung H&E, compression 33007).\n"
+        "   Output has NOT been validated for diagnostic use.\n"
+        "   Please verify results independently before any clinical or research use.\n"
+        "   See README.md for full validation status.\n"
+    )
+
+
 @click.command()
 @click.argument("input_svs", type=click.Path(exists=True))
 @click.argument("output_ometiff", type=click.Path())
@@ -60,7 +72,7 @@ from svs_to_ometiff.converter import convert
     is_flag=True,
     help="Print detailed progress, including every source tile row.",
 )
-@click.version_option(version="1.0.0", prog_name="svs-to-ometiff")
+@click.version_option(version="0.1.0", prog_name="svs-to-ometiff")
 def main(
     input_svs: str,
     output_ometiff: str,
@@ -80,8 +92,8 @@ def main(
     OUTPUT_OMETIFF is the destination path for the .ome.tiff file.
 
     This tool handles Aperio compression 33007 (raw YUYV YCbCr 4:2:2)
-    which is NOT supported by Bio-Formats, OpenSlide, or standard
-    tifffile decoding. It uses a custom BT.601 YCbCr-to-RGB decoder.
+    which may not be supported by Bio-Formats, OpenSlide, or standard
+    tifffile decoding paths. It uses a custom BT.601 YCbCr-to-RGB decoder.
 
     Example:
 
@@ -89,6 +101,9 @@ def main(
     """
     show_progress = verbose or not quiet
     tile_progress_interval = 1 if verbose else 20
+
+    # Experimental warning
+    _print_experimental_warning()
 
     # Compression 'none' means no compression
     compression_arg: Optional[str] = None if compression == "none" else compression

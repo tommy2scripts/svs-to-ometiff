@@ -1,9 +1,9 @@
 """
 svs_to_ometiff — Convert Aperio SVS (compression 33007) to pyramidal OME-TIFF.
 
-Handles the proprietary YUYV raw YCbCr 4:2:2 format used by Aperio AT2
-scanners, which is NOT standard JPEG or JPEG 2000 and cannot be decoded
-by Bio-Formats, OpenSlide, or standard tifffile.
+Handles the observed proprietary YUYV raw YCbCr 4:2:2 format used by some
+Aperio AT2/GT450 exports. This payload is not standard JPEG or JPEG 2000
+and may not decode in Bio-Formats, OpenSlide, or standard tifffile paths.
 
 Modules:
     yuyv_decoder  — YUYV (YCbCr 4:2:2) → RGB using BT.601 full-range
@@ -13,7 +13,7 @@ Modules:
     cli           — Click-based command-line interface
 """
 
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 __all__ = [
     "yuyv_to_rgb",
     "read_svs_full_image",

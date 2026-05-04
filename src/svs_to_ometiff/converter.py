@@ -147,6 +147,7 @@ def convert(
         num_levels=num_levels,
         downsample_factor=downsample_factor,
         verbose=verbose,
+        progress_logger=progress_logger,
     )
 
     del full_image
@@ -160,6 +161,7 @@ def convert(
         compression=compression,
         image_name=image_name,
         verbose=verbose,
+        progress_logger=progress_logger,
     )
 
     output_size = os.path.getsize(output_ometiff)
