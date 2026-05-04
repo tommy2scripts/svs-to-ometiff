@@ -7,7 +7,7 @@ tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 
 import os
 from collections.abc import Callable
-from typing import Optional
+from typing import Literal, Optional
 
 import numpy as np
 
@@ -71,6 +71,7 @@ def convert(
     compression: Optional[str] = "lzw",
     num_levels: int = 6,
     downsample_factor: int = 2,
+    edge_mode: Literal["crop", "pad"] = "crop",
     image_name: Optional[str] = None,
     verbose: bool = True,
     tile_progress_interval: int = 20,
@@ -86,6 +87,8 @@ def convert(
         compression: TIFF compression name, or None for uncompressed output.
         num_levels: Number of pyramid levels including full resolution.
         downsample_factor: Downsampling factor between pyramid levels.
+        edge_mode: Border handling for non-divisible dimensions during
+            downsampling ("crop" or "pad").
         image_name: OME image name. Defaults to input file stem.
         verbose: Emit progress messages.
         tile_progress_interval: Print tile-conversion progress every N source
@@ -146,6 +149,7 @@ def convert(
         full_image,
         num_levels=num_levels,
         downsample_factor=downsample_factor,
+        edge_mode=edge_mode,
         verbose=verbose,
         progress_logger=progress_logger,
     )

@@ -7,7 +7,7 @@ block-averaging downsampling.
 
 import time
 from collections.abc import Callable
-from typing import Optional
+from typing import Literal, Optional
 
 import numpy as np
 
@@ -27,6 +27,7 @@ def build_pyramid(
     full_image: np.ndarray,
     num_levels: int = 6,
     downsample_factor: int = 2,
+    edge_mode: Literal["crop", "pad"] = "crop",
     *,
     verbose: bool = True,
     progress_logger: Optional[ProgressLogger] = None,
@@ -42,6 +43,9 @@ def build_pyramid(
         full_image: Full-resolution RGB image (H, W, 3), uint8.
         num_levels: Number of pyramid levels including full resolution.
         downsample_factor: Factor by which each level is reduced (default 2).
+        edge_mode: Border handling for non-divisible dimensions.
+            "crop" drops trailing edge pixels (backward-compatible behavior).
+            "pad" extends to the next multiple using edge-replication padding.
         verbose: Print progress information.
         progress_logger: Optional callable used instead of print.
 
@@ -62,6 +66,8 @@ def build_pyramid(
         raise ValueError(
             f"downsample_factor must be at least 2, got {downsample_factor}"
         )
+    if edge_mode not in {"crop", "pad"}:
+        raise ValueError(f"edge_mode must be 'crop' or 'pad', got {edge_mode!r}")
 
     h, w = full_image.shape[:2]
     if num_levels > 1 and (h < downsample_factor or w < downsample_factor):
@@ -77,9 +83,12 @@ def build_pyramid(
         prev = pyramid[-1]
         factor = downsample_factor
 
-        # Crop to multiples of the downsample factor
-        new_h = prev.shape[0] // factor
-        new_w = prev.shape[1] // factor
+        if edge_mode == "crop":
+            new_h = prev.shape[0] // factor
+            new_w = prev.shape[1] // factor
+        else:
+            new_h = (prev.shape[0] + factor - 1) // factor
+            new_w = (prev.shape[1] + factor - 1) // factor
         if new_h < 1 or new_w < 1:
             raise ValueError(
                 f"Cannot build level {level}: previous level "
@@ -90,7 +99,12 @@ def build_pyramid(
         crop_w = new_w * factor
 
         # Reshape and average over factor×factor blocks
-        cropped = prev[:crop_h, :crop_w]
+        if edge_mode == "crop":
+            cropped = prev[:crop_h, :crop_w]
+        else:
+            pad_h = crop_h - prev.shape[0]
+            pad_w = crop_w - prev.shape[1]
+            cropped = np.pad(prev, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
         downsampled = (
             cropped.reshape(new_h, factor, new_w, factor, 3)
             .mean(axis=(1, 3))
