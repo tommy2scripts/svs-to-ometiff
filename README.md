@@ -30,13 +30,14 @@ registration.
 ## Installation
 
 ```bash
-pip install svs-to-ometiff
+# Not yet on PyPI — install from source:
+pip install -e ".[dev]"
 ```
 
-For development:
+For basic use (no dev dependencies):
 
 ```bash
-pip install -e ".[dev]"
+pip install -e .
 ```
 
 ## Usage
