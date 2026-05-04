@@ -57,6 +57,13 @@ def _print_experimental_warning() -> None:
     help="Downsampling factor between pyramid levels.",
 )
 @click.option(
+    "--edge-mode",
+    default="crop",
+    type=click.Choice(["crop", "pad"]),
+    show_default=True,
+    help="Border behavior when dimensions are not divisible by downsample factor.",
+)
+@click.option(
     "--image-name",
     default=None,
     type=str,
@@ -80,6 +87,7 @@ def main(
     compression: str,
     num_levels: int,
     downsample_factor: int,
+    edge_mode: str,
     image_name: Optional[str],
     quiet: bool,
     verbose: bool,
@@ -116,6 +124,7 @@ def main(
             compression=compression_arg,
             num_levels=num_levels,
             downsample_factor=downsample_factor,
+            edge_mode=edge_mode,
             image_name=image_name,
             verbose=show_progress,
             tile_progress_interval=tile_progress_interval,

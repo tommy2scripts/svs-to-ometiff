@@ -48,6 +48,37 @@ def test_build_pyramid_uses_progress_logger() -> None:
     assert any("Pyramid built" in message for message in messages)
 
 
+def test_build_pyramid_crop_mode_drops_odd_edges() -> None:
+    image = np.arange(5 * 3 * 3, dtype=np.uint8).reshape((5, 3, 3))
+
+    pyramid = build_pyramid(
+        image,
+        num_levels=2,
+        downsample_factor=2,
+        edge_mode="crop",
+        verbose=False,
+    )
+
+    assert pyramid[1].shape == (2, 1, 3)
+
+
+def test_build_pyramid_pad_mode_preserves_odd_edge_contributions() -> None:
+    image = np.arange(5 * 3 * 3, dtype=np.uint8).reshape((5, 3, 3))
+
+    pyramid = build_pyramid(
+        image,
+        num_levels=2,
+        downsample_factor=2,
+        edge_mode="pad",
+        verbose=False,
+    )
+
+    assert pyramid[1].shape == (3, 2, 3)
+    expected = np.pad(image, ((0, 1), (0, 1), (0, 0)), mode="edge")
+    expected = expected.reshape(3, 2, 2, 2, 3).mean(axis=(1, 3)).astype(np.uint8)
+    np.testing.assert_array_equal(pyramid[1], expected)
+
+
 def test_build_ome_xml_escapes_image_name() -> None:
     xml = build_ome_xml(10, 12, 0.5, image_name='A&B "slide" <test>')
     root = ElementTree.fromstring(xml)
