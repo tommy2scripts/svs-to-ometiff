@@ -81,11 +81,26 @@ def test_write_pyramidal_ometiff_rejects_invalid_tile_size(tmp_path: Path) -> No
         write_pyramidal_ometiff(str(output), pyramid, 0.5, tile_size=10, verbose=False)
 
 
-def test_parse_mpp_requires_exact_key() -> None:
+def test_parse_mpp_parses_standard_field() -> None:
+    assert parse_mpp_from_description("Aperio|MPP = 0.25") == 0.25
+
+
+def test_parse_mpp_parses_extra_spacing() -> None:
+    assert parse_mpp_from_description("Aperio |   MPP    =    0.25   | AppMag = 40") == 0.25
+
+
+def test_parse_mpp_parses_lowercase_key() -> None:
+    assert parse_mpp_from_description("Aperio| mpp = 0.25") == 0.25
+
+
+def test_parse_mpp_rejects_malformed_numeric_value() -> None:
+    with pytest.raises(ValueError, match=r"numeric MPP value.*MPP = not-a-number"):
+        parse_mpp_from_description("Aperio|MPP = not-a-number|AppMag = 40")
+
+
+def test_parse_mpp_rejects_missing_field() -> None:
     with pytest.raises(ValueError, match="MPP not found"):
         parse_mpp_from_description("Aperio|MPP2 = 0.25")
-
-    assert parse_mpp_from_description("Aperio| mpp = 0.25") == 0.25
 
 
 def test_parse_mpp_rejects_non_positive_value() -> None:
