@@ -5,6 +5,7 @@ from xml.etree import ElementTree
 
 import numpy as np
 import pytest
+import tifffile
 
 from svs_to_ometiff.pyramid import build_pyramid
 from svs_to_ometiff.tile_reader import _decode_tile_payload, parse_mpp_from_description
@@ -49,12 +50,39 @@ def test_build_pyramid_uses_progress_logger() -> None:
 
 
 def test_build_ome_xml_escapes_image_name() -> None:
-    xml = build_ome_xml(10, 12, 0.5, image_name='A&B "slide" <test>')
+    xml = build_ome_xml(10, 12, 0.5, image_name='A&B "slide" <test> >')
     root = ElementTree.fromstring(xml)
     image = root.find("{http://www.openmicroscopy.org/Schemas/OME/2016-06}Image")
 
     assert image is not None
-    assert image.attrib["Name"] == 'A&B "slide" <test>'
+    assert image.attrib["Name"] == 'A&B "slide" <test> >'
+
+
+def test_write_pyramidal_ometiff_keeps_escaped_name_parseable_for_tifffile(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "escaped-name.ome.tiff"
+    image_name = 'A&B "slide" <test> >'
+    pyramid = [np.zeros((16, 16, 3), dtype=np.uint8)]
+
+    write_pyramidal_ometiff(
+        str(output),
+        pyramid,
+        0.5,
+        tile_size=16,
+        compression=None,
+        image_name=image_name,
+        verbose=False,
+    )
+
+    with tifffile.TiffFile(output) as tif:
+        ome_xml = tif.ome_metadata
+
+    assert ome_xml is not None
+    root = ElementTree.fromstring(ome_xml)
+    image = root.find("{http://www.openmicroscopy.org/Schemas/OME/2016-06}Image")
+    assert image is not None
+    assert image.attrib["Name"] == image_name
 
 
 def test_build_ome_xml_rejects_invalid_mpp() -> None:
