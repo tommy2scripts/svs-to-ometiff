@@ -9,23 +9,13 @@ that support SubIFD-linked pyramids.
 
 import os
 import time
-from collections.abc import Callable
 from typing import Optional
 from xml.sax.saxutils import quoteattr
 
 import numpy as np
 import tifffile
 
-ProgressLogger = Callable[[str], None]
-
-
-def _log(verbose: bool, logger: Optional[ProgressLogger], message: str) -> None:
-    if not verbose:
-        return
-    if logger is None:
-        print(message)
-    else:
-        logger(message)
+from svs_to_ometiff.utils import ProgressLogger, _log
 
 
 def build_ome_xml(

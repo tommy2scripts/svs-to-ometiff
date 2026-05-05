@@ -6,21 +6,11 @@ block-averaging downsampling.
 """
 
 import time
-from collections.abc import Callable
 from typing import Literal, Optional
 
 import numpy as np
 
-ProgressLogger = Callable[[str], None]
-
-
-def _log(verbose: bool, logger: Optional[ProgressLogger], message: str) -> None:
-    if not verbose:
-        return
-    if logger is None:
-        print(message)
-    else:
-        logger(message)
+from svs_to_ometiff.utils import ProgressLogger, _log
 
 
 def build_pyramid(
