@@ -184,12 +184,6 @@ def read_svs_full_image(
     n_tiles_y = metadata["n_tiles_y"]
     total_tiles = metadata["tile_count"]
 
-    # Build tile index lookup: (row, col) -> linear index
-    tile_idx = {}
-    for ty in range(n_tiles_y):
-        for tx in range(n_tiles_x):
-            tile_idx[(ty, tx)] = ty * n_tiles_x + tx
-
     # Allocate full image
     full_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)
 
@@ -215,7 +209,7 @@ def read_svs_full_image(
                 x0 = tx * src_tile_w
                 x1 = min(x0 + src_tile_w, img_w)
 
-                idx = tile_idx[(ty, tx)]
+                idx = ty * n_tiles_x + tx
                 fh.seek(offsets[idx])
                 raw = fh.read(bytecounts[idx])
                 tile_rgb = _decode_tile_payload(
