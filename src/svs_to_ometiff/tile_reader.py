@@ -8,6 +8,7 @@ of the tile size.
 """
 
 import math
+import re
 import time
 from typing import Any
 
@@ -98,22 +99,23 @@ def parse_mpp_from_description(description: str) -> float:
     Raises:
         ValueError: If MPP cannot be parsed from the description.
     """
-    for part in description.split("|"):
-        part = part.strip()
-        key, sep, value = part.partition("=")
-        if key.strip().upper() == "MPP":
-            if not sep:
-                raise ValueError(f"Could not parse MPP from description field: {part}")
-            try:
-                mpp = float(value.strip())
-            except ValueError as exc:
-                raise ValueError(
-                    f"Could not parse MPP from description field: {part}"
-                ) from exc
-            if mpp <= 0:
-                raise ValueError(f"MPP must be positive, got {mpp}")
-            return mpp
-    raise ValueError("MPP not found in ImageDescription tag")
+    match = re.search(r"(?i)(?P<snippet>\bmpp\s*=\s*(?P<value>[^|]+))", description)
+    if match is None:
+        raise ValueError("MPP not found in ImageDescription tag")
+
+    snippet = match.group("snippet").strip()
+    value_text = match.group("value").strip()
+
+    try:
+        mpp = float(value_text)
+    except ValueError as exc:
+        raise ValueError(
+            f"Could not parse numeric MPP value from description snippet: {snippet}"
+        ) from exc
+
+    if mpp <= 0:
+        raise ValueError(f"MPP must be positive, got {mpp}")
+    return mpp
 
 
 def _decode_tile_payload(
