@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+*.ome.tiff
+*.svs
+.eggs/
+*.egg-info/
+dist/
+build/

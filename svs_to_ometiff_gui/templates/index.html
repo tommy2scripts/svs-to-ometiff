@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>svs-to-ometiff GUI</title>
+<style>
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: #0d1117;
+  color: #c9d1d9;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+}
+.container {
+  max-width: 700px;
+  width: 100%;
+}
+h1 {
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.subtitle {
+  font-size: 0.9rem;
+  color: #8b949e;
+  margin-bottom: 1.5rem;
+}
+.warning {
+  background: #3d2e00;
+  border: 1px solid #d29922;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  color: #e3b341;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.warning-icon {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+.dropzone {
+  border: 2px dashed #30363d;
+  border-radius: 8px;
+  padding: 2rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 1rem;
+}
+.dropzone:hover {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.05);
+}
+.dropzone.drag-over {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.1);
+}
+.dropzone-text {
+  font-size: 0.95rem;
+  color: #8b949e;
+}
+.dropzone-text strong {
+  color: #c9d1d9;
+}
+.form-group {
+  margin-bottom: 1rem;
+}
+label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+  color: #c9d1d9;
+}
+select {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  appearance: auto;
+}
+
+select:hover {
+  border-color: #58a6ff;
+}
+
+select:focus {
+  outline: none;
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 2px rgba(88,166,255,0.3);
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 0.9rem;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input[type="text"]:focus {
+  border-color: #58a6ff;
+}
+.row {
+  display: flex;
+  gap: 1rem;
+}
+.row .form-group {
+  flex: 1;
+}
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+.settings-header h3 {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #8b949e;
+}
+.gear-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: #8b949e;
+  transition: color 0.2s, background 0.2s;
+  line-height: 1;
+}
+.gear-btn:hover {
+  color: #c9d1d9;
+  background: rgba(255,255,255,0.05);
+}
+.gear-btn svg {
+  display: block;
+}
+.settings-panel {
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: #161b22;
+}
+.settings-panel.hidden {
+  display: none;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  text-decoration: none;
+}
+.btn-primary {
+  background: #238636;
+  border-color: rgb(46, 164, 79);
+  color: #fff;
+  width: 100%;
+}
+.btn-primary:hover {
+  background: #2ea043;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-secondary {
+  background: #21262d;
+  border-color: #30363d;
+  color: #c9d1d9;
+}
+.btn-secondary:hover {
+  background: #30363d;
+}
+.btn-group {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.progress-section {
+  margin-top: 1rem;
+}
+.progress-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.spinner {
+  flex-shrink: 0;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.progress-text {
+  font-size: 0.9rem;
+  color: #c9d1d9;
+}
+.progress-bar-track {
+  width: 100%;
+  height: 8px;
+  background: #21262d;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #238636, #2ea043);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.completion-box {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(46, 160, 67, 0.4);
+  background: rgba(35, 134, 54, 0.1);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.completion-box .done-text {
+  color: #3fb950;
+  font-weight: 500;
+}
+.error-box {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #f85149;
+  background: rgba(248, 81, 73, 0.1);
+  border-radius: 6px;
+  color: #f85149;
+  font-size: 0.9rem;
+}
+.hidden {
+  display: none !important;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>svs-to-ometiff GUI</h1>
+  <p class="subtitle">Convert SVS slide images to OME-TIFF format</p>
+
+  <div class="warning">
+    <span class="warning-icon">&#9888;&#65039;</span>
+    <span><strong>Experimental:</strong> This GUI is experimental and not yet thoroughly tested. Use with caution on production data. Always verify outputs.</span>
+  </div>
+
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone-text">
+        Drag an <strong>.svs</strong> file here to copy its name, then paste the full path from Finder:<br>
+        <span style="font-size:0.85rem;color:#8b949e;">Right‑click &rarr; hold Option &rarr; Copy &ldquo;...&rdquo; as Pathname &rarr; paste above</span>
+      </div>
+    </div>
+
+  <input type="file" id="fileInput" accept=".svs" style="display:none">
+
+  <div class="form-group">
+    <label for="inputPath">Input SVS Path</label>
+    <div style="display:flex;gap:0.5rem;">
+      <input type="text" id="inputPath" placeholder="/path/to/file.svs" autocomplete="off" style="flex:1;">
+      <button class="btn btn-secondary" id="browseBtn" style="white-space:nowrap;flex-shrink:0;">Browse...</button>
+    </div>
+    <div id="pathHint" class="hidden" style="margin-top:0.35rem;font-size:0.8rem;color:#8b949e;">
+      Copied filename &mdash; paste the full path above.
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label for="outputPath">Output Path</label>
+    <input type="text" id="outputPath" placeholder="Auto-derived" autocomplete="off">
+  </div>
+
+  <div class="settings-header" id="settingsToggle">
+    <h3>Advanced Settings</h3>
+    <button class="gear-btn" aria-label="Toggle settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+  </div>
+
+  <div class="settings-panel hidden" id="settingsPanel">
+    <div class="row">
+      <div class="form-group">
+        <label for="tileSize">Tile Size</label>
+        <select id="tileSize">
+          <option value="256">256</option>
+          <option value="512" selected>512</option>
+          <option value="1024">1024</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="compression">Compression</label>
+        <select id="compression">
+          <option value="lzw" selected>lzw (lossless)</option>
+          <option value="zlib">zlib</option>
+          <option value="deflate">deflate</option>
+          <option value="none">none (uncompressed)</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="form-group">
+        <label for="numLevels">Pyramid Levels</label>
+        <select id="numLevels">
+          <option value="1">1 (no pyramid)</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6" selected>6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="downsampleFactor">Downsample</label>
+        <select id="downsampleFactor">
+          <option value="2" selected>2×</option>
+          <option value="3">3×</option>
+          <option value="4">4×</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="convertBtn" disabled>Convert</button>
+
+  <div class="progress-section hidden" id="progressSection">
+    <div class="progress-status">
+      <svg class="spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2">
+        <circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round" opacity="0.3"/>
+        <circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-dashoffset="10" stroke-linecap="round"/>
+      </svg>
+      <span class="progress-text" id="progressText">Starting conversion...</span>
+    </div>
+    <div class="progress-bar-track">
+      <div class="progress-bar-fill" id="progressBarFill"></div>
+    </div>
+  </div>
+
+  <div class="completion-box hidden" id="completionBox">
+    <span class="done-text">&#10003; Done!</span>
+    <button class="btn btn-secondary" id="openFolderBtn">Open Output Folder</button>
+  </div>
+
+  <div class="error-box hidden" id="errorBox"></div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const inputPath = document.getElementById('inputPath');
+  const outputPath = document.getElementById('outputPath');
+  const convertBtn = document.getElementById('convertBtn');
+  const settingsToggle = document.getElementById('settingsToggle');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const progressSection = document.getElementById('progressSection');
+  const progressText = document.getElementById('progressText');
+  const progressBarFill = document.getElementById('progressBarFill');
+  const completionBox = document.getElementById('completionBox');
+  const errorBox = document.getElementById('errorBox');
+  const openFolderBtn = document.getElementById('openFolderBtn');
+  const browseBtn = document.getElementById('browseBtn');
+
+  let currentRequestId = null;
+
+  function deriveOutputPath(inp) {
+    if (!inp || !inp.trim()) return '';
+    const p = inp.trim();
+    const dot = p.lastIndexOf('.');
+    const base = dot > p.lastIndexOf('/') && dot > p.lastIndexOf('\\') ? p.substring(0, dot) : p;
+    return base + '.ome.tiff';
+  }
+
+  function updateOutputPath() {
+    const inp = inputPath.value.trim();
+    if (inp) {
+      outputPath.value = deriveOutputPath(inp);
+    } else {
+      outputPath.value = '';
+    }
+    convertBtn.disabled = !inp;
+  }
+
+  inputPath.addEventListener('input', updateOutputPath);
+
+  // Show a hint when only a bare filename was placed (browse or drag-drop)
+  function showFilePathHint(name) {
+    const hint = document.getElementById('pathHint');
+    hint.textContent = 'Copied filename "' + name + '" — paste the full path above.';
+    hint.classList.remove('hidden');
+  }
+
+  // Hide the hint as soon as the user starts typing the real path
+  inputPath.addEventListener('focus', function() {
+    document.getElementById('pathHint').classList.add('hidden');
+  });
+
+  // Browse button triggers file dialog
+  browseBtn.addEventListener('click', function(e) {
+    e.preventDefault();
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', function() {
+    const file = fileInput.files[0];
+    if (file) {
+      inputPath.value = file.name;
+      updateOutputPath();
+      showFilePathHint(file.name);
+    }
+  });
+
+  // Drag over events
+  dropzone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropzone.classList.add('drag-over');
+  });
+
+  dropzone.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropzone.classList.remove('drag-over');
+  });
+
+  dropzone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropzone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      inputPath.value = file.name;
+      updateOutputPath();
+      showFilePathHint(file.name);
+    }
+  });
+
+  // Settings toggle
+  settingsToggle.addEventListener('click', function() {
+    settingsPanel.classList.toggle('hidden');
+  });
+
+  // Convert
+  convertBtn.addEventListener('click', function() {
+    const inp = inputPath.value.trim();
+    if (!inp) return;
+
+    const payload = {
+      input_path: inp,
+      output_path: outputPath.value.trim() || undefined,
+      tile_size: parseInt(document.getElementById('tileSize').value, 10) || undefined,
+      compression: document.getElementById('compression').value || undefined,
+      num_levels: parseInt(document.getElementById('numLevels').value, 10) || undefined,
+      downsample_factor: parseFloat(document.getElementById('downsampleFactor').value) || undefined
+    };
+
+    convertBtn.disabled = true;
+    convertBtn.textContent = 'Converting...';
+    errorBox.classList.add('hidden');
+    completionBox.classList.add('hidden');
+    progressSection.classList.remove('hidden');
+    progressText.textContent = 'Starting conversion...';
+    progressBarFill.style.width = '0%';
+
+    fetch('/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(function(resp) {
+      if (!resp.ok) {
+        return resp.json().then(function(data) {
+          throw new Error(data.error || 'Conversion request failed');
+        });
+      }
+      return resp.json();
+    })
+    .then(function(data) {
+      currentRequestId = data.request_id;
+      listenProgress(currentRequestId);
+    })
+    .catch(function(err) {
+      progressSection.classList.add('hidden');
+      errorBox.textContent = err.message || 'Failed to start conversion';
+      errorBox.classList.remove('hidden');
+      convertBtn.textContent = 'Convert';
+      convertBtn.disabled = false;
+    });
+  });
+
+  function listenProgress(requestId) {
+    var eventSource = new EventSource('/progress/' + encodeURIComponent(requestId));
+
+    eventSource.addEventListener('progress', function(e) {
+      var data;
+      try {
+        data = JSON.parse(e.data);
+      } catch(err) {
+        return;
+      }
+
+      if (data.message) {
+        progressText.textContent = data.message;
+      }
+      if (typeof data.percent === 'number') {
+        progressBarFill.style.width = Math.min(data.percent, 100) + '%';
+      }
+    });
+
+    eventSource.addEventListener('complete', function(e) {
+      eventSource.close();
+      progressSection.classList.add('hidden');
+      completionBox.classList.remove('hidden');
+      convertBtn.textContent = 'Convert';
+      convertBtn.disabled = false;
+      currentRequestId = null;
+    });
+
+    eventSource.addEventListener('error', function(e) {
+      var data;
+      try {
+        data = JSON.parse(e.data);
+      } catch(err) {
+        eventSource.close();
+        progressSection.classList.add('hidden');
+        errorBox.textContent = 'Connection lost or conversion failed';
+        errorBox.classList.remove('hidden');
+        convertBtn.textContent = 'Convert';
+        convertBtn.disabled = false;
+        currentRequestId = null;
+        return;
+      }
+
+      eventSource.close();
+      progressSection.classList.add('hidden');
+      errorBox.textContent = data.error || 'Conversion failed';
+      errorBox.classList.remove('hidden');
+      convertBtn.textContent = 'Convert';
+      convertBtn.disabled = false;
+      currentRequestId = null;
+    });
+  }
+
+  // Open output folder
+  openFolderBtn.addEventListener('click', function() {
+    var out = outputPath.value.trim();
+    if (!out) return;
+    var dir = out.substring(0, out.lastIndexOf('/'));
+    if (!dir) dir = out.substring(0, out.lastIndexOf('\\'));
+    if (!dir) dir = '.';
+    // Reveal in Finder (macOS) or file manager
+    fetch('/open_folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: dir })
+    }).catch(function(){});
+  });
+
+  // Allow Enter key to trigger convert
+  inputPath.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !convertBtn.disabled) {
+      convertBtn.click();
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
