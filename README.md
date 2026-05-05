@@ -5,7 +5,7 @@
 Convert Aperio SVS slides using proprietary compression 33007 into standard
 pyramidal OME-TIFF.
 
-[![CI](https://github.com/tommytran/svs-to-ometiff/actions/workflows/ci.yml/badge.svg)](https://github.com/tommytran/svs-to-ometiff/actions)
+[![CI](https://github.com/tommy2scripts/svs-to-ometiff/actions/workflows/ci.yml/badge.svg)](https://github.com/tommy2scripts/svs-to-ometiff/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)]()
 
@@ -97,8 +97,7 @@ The converter does three things:
 - The CLI estimates peak RAM before decoding and prints a warning above 30 GB.
 - The expected source tile width must be even because YUYV 4:2:2 shares chroma
   across two horizontal pixels.
-- Known affected scanner families include Aperio AT2 and Aperio GT450 exports
-  from Leica/Aperio workflows. Firmware and export settings vary by site, so
+- Observed in one AT2/GT450 export context. Firmware and export settings vary by site, so
   verify the source TIFF Compression tag is `33007` before relying on this
   converter.
 
@@ -156,7 +155,7 @@ around in the output.
 | OME-TIFF output passes tifffile validation | `is_ome=True`, `is_bigtiff=True`, 6 pyramid levels detected | Medium-high |
 | Pyramid SubIFD linkage works in tifffile | `tifffile.TiffFile.series[0].levels` enumerates all 6 levels | Medium-high |
 | Synthetic 33007 SVS → valid OME-TIFF end-to-end | `test_integration.py` passes with known pixel values | Medium |
-| Works on real SVS file | 67174_PT_Lung.svs (AT2/GT450, lung SCC, post-Xenium H&E, 3.2 GB) | Single file |
+| Works on real SVS file | lung SCC, post-Xenium H&E (3.2 GB, AT2/GT450, compression 33007) | Single file |
 
 ### What has NOT been tested (open questions)
 
