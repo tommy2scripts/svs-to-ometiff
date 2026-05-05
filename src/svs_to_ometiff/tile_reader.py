@@ -182,7 +182,6 @@ def read_svs_full_image(
     src_tile_h = metadata["src_tile_height"]
     n_tiles_x = metadata["n_tiles_x"]
     n_tiles_y = metadata["n_tiles_y"]
-    total_tiles = metadata["tile_count"]
 
     # Build tile index lookup: (row, col) -> linear index
     tile_idx = {}

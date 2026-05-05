@@ -6,16 +6,14 @@ tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 """
 
 import os
-from collections.abc import Callable
 from typing import Literal, Optional
 
 import numpy as np
 
 from svs_to_ometiff.pyramid import build_pyramid
 from svs_to_ometiff.tile_reader import read_svs_full_image, read_svs_metadata
+from svs_to_ometiff.utils import ProgressLogger, _log
 from svs_to_ometiff.writer import write_pyramidal_ometiff
-
-ProgressLogger = Callable[[str], None]
 
 
 def estimate_peak_ram_bytes(
@@ -52,15 +50,6 @@ def estimate_peak_ram_bytes(
 
     rgb_bytes = total_pixels * 3
     return int(rgb_bytes * 1.25)
-
-
-def _log(verbose: bool, logger: Optional[ProgressLogger], message: str) -> None:
-    if not verbose:
-        return
-    if logger is None:
-        print(message)
-    else:
-        logger(message)
 
 
 def convert(
