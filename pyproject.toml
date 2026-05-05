@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "svs-to-ometiff-gui"
+version = "0.1.0"
+description = "Flask GUI for converting SVS whole-slide images to OME-TIFF."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "svs-to-ometiff>=0.2.0",
+    "flask>=2.3",
+]
+
+[project.scripts]
+svs-to-ometiff-gui = "svs_to_ometiff_gui.serve:main"
+
+[tool.setuptools.packages.find]
+include = ["svs_to_ometiff_gui*"]
+
+[tool.setuptools.package-data]
+svs_to_ometiff_gui = ["templates/*.html"]

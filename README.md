@@ -6,33 +6,35 @@ A web-based graphical user interface for converting SVS whole-slide images to OM
 
 ## Requirements
 
-- Python 3.8+
-- The `svs_to_ometiff` package installed (core conversion library)
-- Flask (automatically installed via requirements.txt)
+- Python 3.9+
+- `pip`
 
 ## Installation
 
-1.  **Ensure the `svs_to_ometiff` package is installed.**
+Install from the project directory:
 
-    If it is not yet installed, install it from its project directory:
+```bash
+cd /path/to/svs-to-ometiff-gui
+pip install -e .
+```
 
-    ```bash
-    pip install /path/to/svs_to_ometiff
-    ```
+This installs the GUI package and its runtime dependencies:
 
-2.  **Install the GUI dependencies.**
-
-    ```bash
-    cd /Users/tommytran/Downloads/python_paper/svs_ome_automated/svs-to-ometiff-gui
-    pip install -r requirements.txt
-    ```
+- `svs-to-ometiff>=0.2.0`
+- `flask>=2.3`
 
 ## Usage
 
-Run the GUI server:
+Run the GUI with the console script:
 
 ```bash
-python -m svs_to_ometiff_gui.serve
+svs-to-ometiff-gui
+```
+
+Or run it as a Python module:
+
+```bash
+python -m svs_to_ometiff_gui
 ```
 
 This will:
@@ -60,9 +62,11 @@ This will:
 svs-to-ometiff-gui/
 ├── svs_to_ometiff_gui/
 │   ├── __init__.py
+│   ├── __main__.py           # python -m svs_to_ometiff_gui entry point
 │   ├── serve.py              # Flask app with SSE progress
 │   └── templates/
 │       └── index.html         # Single-page GUI (inline CSS/JS)
+├── pyproject.toml
 ├── requirements.txt
 └── README.md
 ```
