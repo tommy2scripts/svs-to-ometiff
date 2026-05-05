@@ -6,14 +6,28 @@ tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 """
 
 import os
-from typing import Literal, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 
+from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff.pyramid import build_pyramid
 from svs_to_ometiff.tile_reader import read_svs_full_image, read_svs_metadata
-from svs_to_ometiff.utils import ProgressLogger, _log
+from svs_to_ometiff.utils import _log
 from svs_to_ometiff.writer import write_pyramidal_ometiff
+
+
+_LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
+    "tile_size": 512,
+    "compression": "lzw",
+    "num_levels": 6,
+    "downsample_factor": 2,
+    "edge_mode": "crop",
+    "image_name": None,
+    "verbose": True,
+    "tile_progress_interval": 20,
+    "progress_logger": None,
+}
 
 
 def estimate_peak_ram_bytes(
@@ -52,46 +66,95 @@ def estimate_peak_ram_bytes(
     return int(rgb_bytes * 1.25)
 
 
+def _coerce_convert_config(
+    config_or_input_svs: Union[ConvertConfig, str],
+    output_ometiff: Optional[str],
+    legacy_kwargs: dict[str, Any],
+) -> ConvertConfig:
+    if isinstance(config_or_input_svs, ConvertConfig):
+        if output_ometiff is not None or legacy_kwargs:
+            raise TypeError(
+                "convert() accepts either a ConvertConfig or legacy "
+                "input/output arguments, not both"
+            )
+        return config_or_input_svs
+
+    if output_ometiff is None:
+        raise TypeError("convert() missing required output_ometiff argument")
+
+    unknown = sorted(set(legacy_kwargs) - set(_LEGACY_CONFIG_DEFAULTS))
+    if unknown:
+        unknown_args = ", ".join(unknown)
+        raise TypeError(f"convert() got unexpected keyword argument(s): {unknown_args}")
+
+    values = {**_LEGACY_CONFIG_DEFAULTS, **legacy_kwargs}
+    return ConvertConfig(
+        input_svs=config_or_input_svs,
+        output_ometiff=output_ometiff,
+        **values,
+    )
+
+
+def _raise_write_error_with_context(exc: Exception, compression: Optional[str]) -> None:
+    message = str(exc)
+    message_lower = message.lower()
+
+    if isinstance(exc, KeyError) and "imagecodecs" in message_lower:
+        raise RuntimeError(
+            "Failed to write compressed OME-TIFF because imagecodecs is missing "
+            "or unavailable. Install it with 'pip install imagecodecs'. If the "
+            "compressed write still fails, retry with '--compression none'."
+        ) from exc
+
+    compression_error_tokens = (
+        "compression",
+        "compressor",
+        "encode",
+        "codec",
+        "imagecodecs",
+    )
+    if compression is not None and any(
+        token in message_lower for token in compression_error_tokens
+    ):
+        raise RuntimeError(
+            f"Failed to write OME-TIFF with compression {compression!r}: {message}. "
+            "Retry with '--compression none' to write uncompressed output."
+        ) from exc
+
+    raise exc
+
+
 def convert(
-    input_svs: str,
-    output_ometiff: str,
-    *,
-    tile_size: int = 512,
-    compression: Optional[str] = "lzw",
-    num_levels: int = 6,
-    downsample_factor: int = 2,
-    edge_mode: Literal["crop", "pad"] = "crop",
-    image_name: Optional[str] = None,
-    verbose: bool = True,
-    tile_progress_interval: int = 20,
-    progress_logger: Optional[ProgressLogger] = None,
+    config_or_input_svs: Union[ConvertConfig, str],
+    output_ometiff: Optional[str] = None,
+    **legacy_kwargs: Any,
 ) -> dict[str, object]:
     """
     Convert Aperio compression-33007 SVS to pyramidal OME-TIFF.
 
     Args:
-        input_svs: Source SVS path.
-        output_ometiff: Destination OME-TIFF path.
-        tile_size: Output OME-TIFF tile size.
-        compression: TIFF compression name, or None for uncompressed output.
-        num_levels: Number of pyramid levels including full resolution.
-        downsample_factor: Downsampling factor between pyramid levels.
-        edge_mode: Border handling for non-divisible dimensions during
-            downsampling ("crop" or "pad").
-        image_name: OME image name. Defaults to input file stem.
-        verbose: Emit progress messages.
-        tile_progress_interval: Print tile-conversion progress every N source
-            tile rows. Use 0 to suppress tile progress.
-        progress_logger: Optional callable used instead of print.
+        config_or_input_svs: Preferred form is a :class:`ConvertConfig`.
+            For backwards compatibility, callers may still pass the source SVS
+            path here and the destination path as ``output_ometiff``.
+        output_ometiff: Destination OME-TIFF path for legacy callers.
+        **legacy_kwargs: Conversion options for legacy callers. New code should
+            put these values on ``ConvertConfig``.
 
     Returns:
         Metadata dict with input metadata, estimated peak RAM, pyramid shapes,
         and output file size.
     """
-    if image_name is None:
-        image_name = os.path.splitext(os.path.basename(input_svs))[0]
+    config = _coerce_convert_config(
+        config_or_input_svs,
+        output_ometiff,
+        legacy_kwargs,
+    )
 
-    metadata = read_svs_metadata(input_svs)
+    image_name = config.image_name
+    if image_name is None:
+        image_name = os.path.splitext(os.path.basename(config.input_svs))[0]
+
+    metadata = read_svs_metadata(config.input_svs)
     if metadata["compression"] != 33007:
         raise ValueError(
             "svs-to-ometiff only supports Aperio compression 33007; "
@@ -101,73 +164,84 @@ def convert(
     estimated_ram = estimate_peak_ram_bytes(
         int(metadata["width"]),
         int(metadata["height"]),
-        num_levels=num_levels,
-        downsample_factor=downsample_factor,
+        num_levels=config.num_levels,
+        downsample_factor=config.downsample_factor,
     )
     estimated_ram_gb = estimated_ram / 1e9
 
-    _log(verbose, progress_logger, f"Reading SVS: {input_svs}")
-    _log(verbose, progress_logger, f"Output: {output_ometiff}")
+    _log(config.verbose, config.progress_logger, f"Reading SVS: {config.input_svs}")
+    _log(config.verbose, config.progress_logger, f"Output: {config.output_ometiff}")
     _log(
-        verbose,
-        progress_logger,
+        config.verbose,
+        config.progress_logger,
         (
             f"Image: {metadata['width']} x {metadata['height']} px; "
             f"source tiles: {metadata['src_tile_width']}x"
             f"{metadata['src_tile_height']}, count={metadata['tile_count']}"
         ),
     )
-    _log(verbose, progress_logger, f"Estimated peak RAM: {estimated_ram_gb:.1f} GB")
+    _log(
+        config.verbose,
+        config.progress_logger,
+        f"Estimated peak RAM: {estimated_ram_gb:.1f} GB",
+    )
     if estimated_ram_gb > 30:
         _log(
-            verbose,
-            progress_logger,
+            config.verbose,
+            config.progress_logger,
             "WARNING: estimated peak RAM exceeds 30 GB; run on a high-memory host.",
         )
 
     full_image, metadata = read_svs_full_image(
-        input_svs,
-        progress_interval=tile_progress_interval if verbose else 0,
+        config.input_svs,
+        progress_interval=config.tile_progress_interval if config.verbose else 0,
     )
 
     mpp = float(metadata["mpp"])
-    _log(verbose, progress_logger, f"MPP: {mpp} um/px")
-    _log(verbose, progress_logger, f"Building {num_levels}-level pyramid...")
+    _log(config.verbose, config.progress_logger, f"MPP: {mpp} um/px")
+    _log(
+        config.verbose,
+        config.progress_logger,
+        f"Building {config.num_levels}-level pyramid...",
+    )
 
     pyramid = build_pyramid(
         full_image,
-        num_levels=num_levels,
-        downsample_factor=downsample_factor,
-        edge_mode=edge_mode,
-        verbose=verbose,
-        progress_logger=progress_logger,
+        num_levels=config.num_levels,
+        downsample_factor=config.downsample_factor,
+        edge_mode=config.edge_mode,
+        verbose=config.verbose,
+        progress_logger=config.progress_logger,
     )
 
     del full_image
 
-    _log(verbose, progress_logger, "Writing OME-TIFF...")
-    write_pyramidal_ometiff(
-        output_ometiff,
-        pyramid,
-        mpp,
-        tile_size=tile_size,
-        compression=compression,
-        image_name=image_name,
-        verbose=verbose,
-        progress_logger=progress_logger,
-    )
+    _log(config.verbose, config.progress_logger, "Writing OME-TIFF...")
+    try:
+        write_pyramidal_ometiff(
+            config.output_ometiff,
+            pyramid,
+            mpp,
+            tile_size=config.tile_size,
+            compression=config.compression,
+            image_name=image_name,
+            verbose=config.verbose,
+            progress_logger=config.progress_logger,
+        )
+    except Exception as exc:
+        _raise_write_error_with_context(exc, config.compression)
 
-    output_size = os.path.getsize(output_ometiff)
+    output_size = os.path.getsize(config.output_ometiff)
     result: dict[str, object] = {
         **metadata,
         "estimated_peak_ram_bytes": estimated_ram,
         "pyramid_shapes": [tuple(np.asarray(level).shape) for level in pyramid],
-        "output_path": output_ometiff,
+        "output_path": config.output_ometiff,
         "output_size_bytes": output_size,
     }
     _log(
-        verbose,
-        progress_logger,
-        f"Conversion complete: {output_ometiff} ({output_size / 1e9:.2f} GB)",
+        config.verbose,
+        config.progress_logger,
+        f"Conversion complete: {config.output_ometiff} ({output_size / 1e9:.2f} GB)",
     )
     return result

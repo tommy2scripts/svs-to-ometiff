@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 import tifffile
 
+from svs_to_ometiff.__main__ import main as module_main
+from svs_to_ometiff.cli import main as cli_main
 from svs_to_ometiff.pyramid import build_pyramid
 from svs_to_ometiff.tile_reader import _decode_tile_payload, parse_mpp_from_description
 from svs_to_ometiff.writer import build_ome_xml, write_pyramidal_ometiff
@@ -17,6 +19,10 @@ def test_build_pyramid_rejects_non_rgb_input() -> None:
 
     with pytest.raises(ValueError, match=r"\(H, W, 3\)"):
         build_pyramid(image, verbose=False)
+
+
+def test_module_entry_point_uses_cli_main() -> None:
+    assert module_main is cli_main
 
 
 def test_build_pyramid_allows_single_level_small_image() -> None:

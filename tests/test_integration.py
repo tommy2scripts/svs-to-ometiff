@@ -4,9 +4,11 @@ import struct
 from pathlib import Path
 
 import numpy as np
+import pytest
 import tifffile
 
-from svs_to_ometiff import convert
+from svs_to_ometiff import ConvertConfig, convert
+import svs_to_ometiff.converter as converter_module
 
 
 def _make_known_yuyv_tile(width: int, height: int) -> bytes:
@@ -61,12 +63,14 @@ def test_full_pipeline_synthetic_33007(tmp_path: Path) -> None:
         assert int(tif.pages[0].tags["Compression"].value) == 33007
 
     result = convert(
-        str(input_svs),
-        str(output_ometiff),
-        tile_size=16,
-        compression=None,
-        num_levels=2,
-        verbose=False,
+        ConvertConfig(
+            input_svs=str(input_svs),
+            output_ometiff=str(output_ometiff),
+            tile_size=16,
+            compression=None,
+            num_levels=2,
+            verbose=False,
+        )
     )
 
     assert result["pyramid_shapes"] == [(16, 16, 3), (8, 8, 3)]
@@ -89,3 +93,72 @@ def test_full_pipeline_synthetic_33007(tmp_path: Path) -> None:
         expected_rgb.reshape(8, 2, 8, 2, 3).mean(axis=(1, 3)).astype(np.uint8)
     )
     np.testing.assert_array_equal(level1, expected_level1)
+
+
+def test_convert_keeps_legacy_arguments_working(tmp_path: Path) -> None:
+    input_svs = tmp_path / "synthetic.svs"
+    output_ometiff = tmp_path / "synthetic.ome.tiff"
+    _write_synthetic_33007_svs(input_svs)
+
+    result = convert(
+        str(input_svs),
+        str(output_ometiff),
+        tile_size=16,
+        compression=None,
+        num_levels=1,
+        verbose=False,
+    )
+
+    assert result["pyramid_shapes"] == [(16, 16, 3)]
+
+
+def test_convert_explains_missing_imagecodecs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    input_svs = tmp_path / "synthetic.svs"
+    output_ometiff = tmp_path / "synthetic.ome.tiff"
+    _write_synthetic_33007_svs(input_svs)
+
+    def fail_write(*args, **kwargs) -> None:
+        raise KeyError("requires the imagecodecs package")
+
+    monkeypatch.setattr(converter_module, "write_pyramidal_ometiff", fail_write)
+
+    with pytest.raises(RuntimeError, match="pip install imagecodecs"):
+        convert(
+            ConvertConfig(
+                input_svs=str(input_svs),
+                output_ometiff=str(output_ometiff),
+                tile_size=16,
+                compression="lzw",
+                num_levels=1,
+                verbose=False,
+            )
+        )
+
+
+def test_convert_suggests_uncompressed_fallback_for_compression_errors(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    input_svs = tmp_path / "synthetic.svs"
+    output_ometiff = tmp_path / "synthetic.ome.tiff"
+    _write_synthetic_33007_svs(input_svs)
+
+    def fail_write(*args, **kwargs) -> None:
+        raise RuntimeError("compression encoder failed")
+
+    monkeypatch.setattr(converter_module, "write_pyramidal_ometiff", fail_write)
+
+    with pytest.raises(RuntimeError, match="--compression none"):
+        convert(
+            ConvertConfig(
+                input_svs=str(input_svs),
+                output_ometiff=str(output_ometiff),
+                tile_size=16,
+                compression="lzw",
+                num_levels=1,
+                verbose=False,
+            )
+        )
