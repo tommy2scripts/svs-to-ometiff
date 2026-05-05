@@ -6,6 +6,7 @@ Convert Aperio SVS slides using proprietary compression 33007 into standard
 pyramidal OME-TIFF.
 
 [![CI](https://github.com/tommy2scripts/svs-to-ometiff/actions/workflows/ci.yml/badge.svg)](https://github.com/tommy2scripts/svs-to-ometiff/actions)
+[![PyPI](https://img.shields.io/pypi/v/svs-to-ometiff.svg)](https://pypi.org/project/svs-to-ometiff/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)]()
 
@@ -70,9 +71,26 @@ PY
 Programmatic use:
 
 ```python
-from svs_to_ometiff import convert
+from svs_to_ometiff import convert, ConvertConfig
 
+# Simple use (kwargs)
 convert("input.svs", "output.ome.tiff", verbose=True)
+
+# Typed config (recommended for pipelines)
+config = ConvertConfig(
+    input_svs="slide.svs",
+    output_ometiff="slide.ome.tiff",
+    compression=None,          # Uncompressed for better compatibility
+    num_levels=3,              # Fewer levels for faster conversion
+    verbose=True,
+)
+convert(config)
+```
+
+Or run as a module:
+
+```bash
+python -m svs_to_ometiff input.svs output.ome.tiff
 ```
 
 ## How It Works
@@ -172,6 +190,21 @@ around in the output.
 ### How to help validate
 
 If you have access to Aperio SVS files with compression tag 33007 from different scanners or tissue types, please test the converter and report results (success or failure) via GitHub Issues. Include the scanner model, firmware version if known, and a `tifffile` tag dump of the source file.
+
+## Web GUI (experimental)
+
+A Flask-based drag-and-drop web interface is available on the [`gui`](https://github.com/tommy2scripts/svs-to-ometiff/tree/gui) branch:
+
+```bash
+git clone --branch gui https://github.com/tommy2scripts/svs-to-ometiff.git
+cd svs-to-ometiff
+pip install -r requirements.txt
+python -m svs_to_ometiff_gui.serve
+```
+
+Opens a browser at `http://127.0.0.1:8765` with a dark theme, drag-and-drop, progress streaming, and expandable settings panel.
+
+> **Note:** The GUI is experimental and separate from the core CLI package. It's on its own branch so the CLI remains unaffected.
 
 ## License
 
