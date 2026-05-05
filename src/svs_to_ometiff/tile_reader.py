@@ -182,7 +182,6 @@ def read_svs_full_image(
     src_tile_h = metadata["src_tile_height"]
     n_tiles_x = metadata["n_tiles_x"]
     n_tiles_y = metadata["n_tiles_y"]
-    total_tiles = metadata["tile_count"]
 
     # Allocate full image
     full_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)
