@@ -1,3 +1,7 @@
+"""
+General-purpose utilities for svs-to-ometiff.
+"""
+
 from collections.abc import Callable
 from typing import Optional
 
