@@ -4,24 +4,36 @@ build-backend = "hatchling.build"
 
 [project]
 name = "svs-to-ometiff"
-version = "0.1.0"
+version = "0.2.0"
 description = "Convert Aperio SVS (compression 33007 / YUYV) to pyramidal OME-TIFF"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Tommy Tran and contributors"}
+    {name = "Tommy Tran and contributors", email = "ttran@biochain.com"}
 ]
-keywords = ["aperio", "svs", "ometiff", "whole-slide-imaging", "pathology"]
+keywords = [
+    "aperio", "svs", "ometiff", "whole-slide-imaging", "pathology",
+    "digital-pathology", "tiff", "pyramid", "scanner",
+]
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: System :: Filesystems",
 ]
 requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.21",
     "tifffile>=2022.5.4",
+    "imagecodecs>=2022.2.22",
     "click>=8.0",
 ]
 
@@ -35,10 +47,13 @@ dev = [
 svs-to-ometiff = "svs_to_ometiff.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/tommytran/svs-to-ometiff"
+Homepage = "https://github.com/tommy2scripts/svs-to-ometiff"
+Repository = "https://github.com/tommy2scripts/svs-to-ometiff"
+"Bug Tracker" = "https://github.com/tommy2scripts/svs-to-ometiff/issues"
 
 [tool.ruff]
 line-length = 88
+target-version = "py39"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

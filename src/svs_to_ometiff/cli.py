@@ -17,7 +17,7 @@ def _print_experimental_warning() -> None:
     """Print a prominent experimental-status warning to stderr."""
     import sys
     sys.stderr.write(
-        "⚠️  svs-to-ometiff v0.1.0 — EXPERIMENTAL\n"
+        "⚠️  svs-to-ometiff v0.2.0 — EXPERIMENTAL\n"
         "   Validated on 1 file (AT2/GT450, lung H&E, compression 33007).\n"
         "   Output has NOT been validated for diagnostic use.\n"
         "   Please verify results independently before any clinical or research use.\n"
@@ -79,7 +79,7 @@ def _print_experimental_warning() -> None:
     is_flag=True,
     help="Print detailed progress, including every source tile row.",
 )
-@click.version_option(version="0.1.0", prog_name="svs-to-ometiff")
+@click.version_option(version="0.2.0", prog_name="svs-to-ometiff")
 def main(
     input_svs: str,
     output_ometiff: str,

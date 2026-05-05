@@ -31,14 +31,19 @@ context described in [Validation Status](#validation-status).
 ## Installation
 
 ```bash
-# Not yet on PyPI — install from source:
-pip install -e ".[dev]"
+pip install svs-to-ometiff
 ```
 
-For basic use (no dev dependencies):
+For the latest development version:
 
 ```bash
-pip install -e .
+pip install git+https://github.com/tommy2scripts/svs-to-ometiff.git
+```
+
+For development (includes test/lint tools):
+
+```bash
+pip install "svs-to-ometiff[dev]"
 ```
 
 ## Usage
