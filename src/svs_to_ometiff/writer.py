@@ -8,6 +8,7 @@ that support SubIFD-linked pyramids.
 """
 
 import os
+import tempfile
 import time
 from collections.abc import Sequence
 from typing import Optional
@@ -131,9 +132,16 @@ def write_pyramidal_ometiff_from_levels(
     full_h, full_w = full_img.shape[:2]
     ome_xml = build_ome_xml(full_w, full_h, mpp, image_name)
 
-    if os.path.exists(output_path):
-        os.remove(output_path)
-        _log(verbose, progress_logger, f"Removed existing file: {output_path}")
+    output_dir = os.path.dirname(os.path.abspath(output_path)) or "."
+    output_name = os.path.basename(output_path)
+    temp_handle = tempfile.NamedTemporaryFile(
+        prefix=f".{output_name}.",
+        suffix=".tmp",
+        dir=output_dir,
+        delete=False,
+    )
+    temp_output_path = temp_handle.name
+    temp_handle.close()
 
     _log(verbose, progress_logger, "Writing pyramidal OME-TIFF with SubIFD linkage...")
     _log(verbose, progress_logger, f"Levels: {[p.shape[:2] for p in normalized_levels]}")
@@ -141,38 +149,45 @@ def write_pyramidal_ometiff_from_levels(
     t0 = time.time()
     n_subifds = len(normalized_levels) - 1
 
-    with tifffile.TiffWriter(output_path, bigtiff=True) as tif:
-        tif.write(
-            _iter_padded_tiles(full_img, tile_size),
-            shape=full_img.shape,
-            dtype=full_img.dtype,
-            description=ome_xml,
-            subifds=n_subifds if n_subifds else None,
-            tile=(tile_size, tile_size),
-            compression=compression,
-            photometric="rgb",
-            metadata=None,
-            resolution=(1e4 / mpp, 1e4 / mpp),
-            resolutionunit=tifffile.RESUNIT.CENTIMETER,
-        )
-        _log(verbose, progress_logger, f"  Level 0: {full_w}x{full_h} written")
-
-        for level_index, level in enumerate(normalized_levels[1:], start=1):
+    try:
+        with tifffile.TiffWriter(temp_output_path, bigtiff=True) as tif:
             tif.write(
-                _iter_padded_tiles(level, tile_size),
-                shape=level.shape,
-                dtype=level.dtype,
-                subfiletype=1,
+                _iter_padded_tiles(full_img, tile_size),
+                shape=full_img.shape,
+                dtype=full_img.dtype,
+                description=ome_xml,
+                subifds=n_subifds if n_subifds else None,
                 tile=(tile_size, tile_size),
                 compression=compression,
                 photometric="rgb",
                 metadata=None,
+                resolution=(1e4 / mpp, 1e4 / mpp),
+                resolutionunit=tifffile.RESUNIT.CENTIMETER,
             )
-            _log(
-                verbose,
-                progress_logger,
-                f"  Level {level_index}: {level.shape[1]}x{level.shape[0]} written",
-            )
+            _log(verbose, progress_logger, f"  Level 0: {full_w}x{full_h} written")
+
+            for level_index, level in enumerate(normalized_levels[1:], start=1):
+                tif.write(
+                    _iter_padded_tiles(level, tile_size),
+                    shape=level.shape,
+                    dtype=level.dtype,
+                    subfiletype=1,
+                    tile=(tile_size, tile_size),
+                    compression=compression,
+                    photometric="rgb",
+                    metadata=None,
+                )
+                _log(
+                    verbose,
+                    progress_logger,
+                    f"  Level {level_index}: {level.shape[1]}x{level.shape[0]} written",
+                )
+
+        os.replace(temp_output_path, output_path)
+    except Exception:
+        if os.path.exists(temp_output_path):
+            os.remove(temp_output_path)
+        raise
 
     elapsed = time.time() - t0
     size_gb = os.path.getsize(output_path) / 1e9
