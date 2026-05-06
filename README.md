@@ -1,159 +1,191 @@
 # svs-to-ometiff
 
-> **Status: Experimental — single-scanner validation.** This tool has been tested on ONE Aperio SVS file (AT2/GT450 scanner, lung H&E, compression 33007). Generalizability to other scanner models, firmware versions, and tissue types is not yet verified. Downstream tool compatibility is intended but not yet tested end-to-end. See [Validation Status](#validation-status).
+Convert Aperio SVS files with private compression tag `33007` into OME BigTIFF.
 
-Convert Aperio SVS slides using proprietary compression 33007 into standard
-pyramidal OME-TIFF.
-
-[![CI](https://github.com/tommy2scripts/svs-to-ometiff/actions/workflows/ci.yml/badge.svg)](https://github.com/tommy2scripts/svs-to-ometiff/actions)
 [![PyPI](https://img.shields.io/pypi/v/svs-to-ometiff.svg)](https://pypi.org/project/svs-to-ometiff/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)]()
+[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)](#validation-status)
 
-## The Problem
+> ⚠️ **Experimental:** This converter has structural validation on one real Aperio
+> `33007` SVS file and synthetic pixel-level tests. Manual visual review and
+> multi-scanner validation are still limited. Do not use converted output for
+> diagnostic decisions.
 
-Some Aperio AT2/GT450 whole-slide scanners write `.svs` files with TIFF
-Compression tag `33007`. These files are often described as `JP2K-YCbCr`,
-`ALT_JPEG`, or JPEG 2000-like, but the tile payload is raw YUYV
-YCbCr 4:2:2: each two-pixel pair is stored as `[Y0, U, Y1, V]`.
+## At a glance
 
-Because 33007 is not a standard TIFF/JPEG/JPEG 2000 compression codec, common
-spatial biology tools may fail before the image can be used for Xenium or
-Visium registration. The failures below have been observed in the validation
-context described in [Validation Status](#validation-status).
+| Question | Answer |
+| --- | --- |
+| Primary use | Convert Aperio SVS `Compression=33007` to RGB OME BigTIFF |
+| Default output | Pyramidal OME BigTIFF with LZW compression |
+| Safe fallback | `--compression none --num-levels 3 --tile-size 512` |
+| Memory model | Streamed tile decode plus disk-backed RGB pyramid levels |
+| Current validation | Synthetic tests plus one real lung H&E SVS structural check |
+| Not for | JPEG/JPEG 2000 SVS, diagnostic use, unvalidated scanners |
 
-| Tool | What fails | Typical error message |
-| --- | --- | --- |
-| OpenSlide | Refuses the private compression tag | `Unsupported TIFF compression: 33007` |
-| Bio-Formats / bfconvert | Treats tiles as JPEG-family data | `Cannot read JPEG scanlines` |
-| QuPath | Delegates decoding through OpenSlide/Bio-Formats | `Unsupported TIFF compression: 33007` |
-| libvips | Cannot decode private-compression tile payloads | `vips2tiff: unsupported compression 33007` |
+## Contents
 
-## Installation
+- [Why this exists](#why-this-exists)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [CLI options](#cli-options)
+- [Programmatic use](#programmatic-use)
+- [How it works](#how-it-works)
+- [Verify an output](#verify-an-output)
+- [Validation status](#validation-status)
+- [Limitations](#limitations)
+- [Downstream compatibility goals](#downstream-compatibility-goals)
+- [Troubleshooting](#troubleshooting)
+- [Web GUI](#web-gui)
+- [Development](#development)
+- [How to help validate](#how-to-help-validate)
+
+## Why this exists
+
+Some Aperio AT2/GT450 exports store `.svs` image tiles with TIFF Compression
+tag `33007`. In the validation files seen so far, those tiles are not standard
+JPEG/JPEG 2000 payloads. They are raw YUYV YCbCr 4:2:2 bytes where each
+two-pixel pair is stored as `[Y0, U, Y1, V]`.
+
+That private compression tag can block common whole-slide and spatial biology
+tools before registration or image review starts.
+
+| Tool | Typical failure mode |
+| --- | --- |
+| OpenSlide | `Unsupported TIFF compression: 33007` |
+| Bio-Formats / `bfconvert` | Attempts JPEG-family decoding and fails on scanlines |
+| QuPath | Fails through OpenSlide/Bio-Formats backends |
+| libvips | Fails on unsupported compression `33007` |
+
+`svs-to-ometiff` decodes that YUYV tile payload and writes a standards-oriented
+OME BigTIFF with RGB tiles and optional pyramid levels.
+
+## Install
 
 ```bash
 pip install svs-to-ometiff
 ```
 
-For the latest development version:
+Development install from GitHub:
 
 ```bash
 pip install git+https://github.com/tommy2scripts/svs-to-ometiff.git
 ```
 
-For development (includes test/lint tools):
+Developer tools:
 
 ```bash
 pip install "svs-to-ometiff[dev]"
 ```
 
-## Usage
+### Compression dependency note
+
+The default output compression is `lzw`, which depends on `imagecodecs` through
+`tifffile`. A normal package install declares `imagecodecs` as a dependency.
+
+If you are using an editable/no-deps environment or a platform where
+`imagecodecs` is unavailable, use uncompressed output:
 
 ```bash
-svs-to-ometiff input.svs output.ome.tiff
+svs-to-ometiff input.svs output.ome.tiff --compression none
 ```
 
-Fast single-resolution conversion, useful when downstream tooling does not need
-a pyramid:
+Uncompressed output is larger but is the safest fallback for compatibility and debugging.
 
-```bash
-svs-to-ometiff input.svs output.ome.tiff --num-levels 1
-```
+## Quick start
 
-`--num-levels 1` writes a valid single-resolution OME-TIFF and skips lower
-pyramid generation.
-
-Verify the output:
+Optional source check before converting:
 
 ```bash
 python - <<'PY'
 import tifffile
 
-with tifffile.TiffFile("output.ome.tiff") as tif:
-    print("is_ome:", tif.is_ome)
-    print("is_bigtiff:", tif.is_bigtiff)
-    print("levels:", len(tif.series[0].levels))
-    for index, level in enumerate(tif.series[0].levels):
-        print(index, level.shape)
+with tifffile.TiffFile("input.svs") as tif:
+    print("compression:", tif.pages[0].tags["Compression"].value)
+    print("shape:", tif.pages[0].shape)
 PY
 ```
 
-Programmatic use:
+Continue only if the source compression is `33007`.
 
-```python
-from svs_to_ometiff import convert, ConvertConfig
+Default pyramidal conversion:
 
-# Simple use (kwargs)
-convert("input.svs", "output.ome.tiff", verbose=True)
-
-# Typed config (recommended for pipelines)
-config = ConvertConfig(
-    input_svs="slide.svs",
-    output_ometiff="slide.ome.tiff",
-    compression=None,          # Uncompressed for better compatibility
-    num_levels=3,              # Fewer levels for faster conversion
-    verbose=True,
-)
-convert(config)
+```bash
+svs-to-ometiff input.svs output.ome.tiff
 ```
 
-Or run as a module:
+Known-good conservative command from the real-file structural validation:
+
+```bash
+svs-to-ometiff input.svs output.ome.tiff \
+  --num-levels 3 \
+  --compression none \
+  --tile-size 512
+```
+
+Single-resolution output, useful when the downstream tool does not need a pyramid:
+
+```bash
+svs-to-ometiff input.svs output.ome.tiff --num-levels 1
+```
+
+Run as a module:
 
 ```bash
 python -m svs_to_ometiff input.svs output.ome.tiff
 ```
 
-## How It Works
+## CLI options
 
-The converter does three things:
+| Option | Default | Use when |
+| --- | --- | --- |
+| `--tile-size` | `512` | You need a different square output tile size |
+| `--compression` | `lzw` | Choose `lzw`, `zlib`, `deflate`, or `none` |
+| `--num-levels` | `6` | Reduce levels for faster conversion or use `1` for single-resolution output |
+| `--downsample-factor` | `2` | Change pyramid spacing between levels |
+| `--edge-mode` | `crop` | Use `pad` if you prefer padded borders over cropped odd edges |
+| `--image-name` | input stem | Override the OME `Image` name |
+| `--quiet` | off | Suppress progress output |
+| `--verbose` | off | Print detailed progress, including every source tile row |
 
-1. Decodes each Aperio 33007 tile from YUYV YCbCr 4:2:2 to RGB with BT.601
-   full-range color conversion.
-2. Stages the full-resolution RGB image and lower pyramid levels as
-   disk-backed arrays, then builds lower levels by block averaging.
-3. Writes a BigTIFF OME-TIFF with tiled storage and SubIFD-linked pyramid
-   levels for downstream viewer compatibility.
+## Programmatic use
 
-## Limitations
+```python
+from svs_to_ometiff import ConvertConfig, convert
 
-- Only Aperio compression `33007` is handled. Standard JPEG, JPEG 2000, LZW,
-  and tiled TIFF/SVS files should be opened with standard tools.
-- Conversion uses disk-backed intermediate arrays to avoid holding the full
-  pyramid in Python heap memory. Free disk space near the output path must be
-  sufficient for temporary RGB pyramid data plus the final OME-TIFF.
-- The CLI estimates a streaming peak-RAM target of about
-  `width * height * 3 * 1.2` bytes, but real RSS can vary with OS page cache,
-  TIFF tile buffers, and compression codec behavior.
-- The CLI estimates peak RAM before decoding and prints a warning above 30 GB.
-- The expected source tile width must be even because YUYV 4:2:2 shares chroma
-  across two horizontal pixels.
-- Observed in one AT2/GT450 export context. Firmware and export settings vary by site, so
-  verify the source TIFF Compression tag is `33007` before relying on this
-  converter.
+# Simple kwargs interface
+convert("input.svs", "output.ome.tiff", verbose=True)
 
-## What this does NOT do
+# Typed config for pipelines
+config = ConvertConfig(
+    input_svs="slide.svs",
+    output_ometiff="slide.ome.tiff",
+    compression=None,  # Equivalent to --compression none
+    num_levels=3,
+    tile_size=512,
+    verbose=True,
+)
+convert(config)
+```
 
-- Does **not** handle JPEG-compressed SVS (compression tag `7`) — use libvips or OpenSlide for those
-- Does **not** handle JPEG 2000-compressed SVS (compression tag `33003` or `33005`)
-- Does **not** validate color fidelity against a reference scanner profile
-- Has **not** been tested on frozen sections, IHC, or fluorescence slides
-- Does **not** recover from malformed or truncated tiles — may crash on corrupted SVS files
+## How it works
 
-## Downstream Compatibility
+The converter uses a streamed, disk-backed path by default:
 
-Outputs are intended to be pyramidal OME-TIFF files for downstream workflows
-such as:
+1. Read SVS metadata and validate that the source uses Compression tag `33007`.
+2. Iterate source tiles without decoding the whole slide into a single Python array.
+3. Decode each raw YUYV YCbCr 4:2:2 tile to RGB using BT.601-style conversion.
+4. Stage level 0 and derived pyramid levels as disk-backed NumPy memmaps near the output path.
+5. Write a tiled OME BigTIFF, linking pyramid levels through TIFF SubIFDs.
+6. Replace the destination only after a successful write, so a failed conversion
+   does not overwrite an existing output file.
 
-- Xenium Ranger and Xenium Explorer H&E registration/overlay workflows
-- Space Ranger image inputs after OME-TIFF conversion
-- QuPath
-- napari through `tifffile`
-- HALO and other OME-TIFF aware pathology viewers
+This lowers Python heap pressure compared with building the entire
+full-resolution pyramid in memory. It does not remove the need for disk space:
+temporary RGB pyramid levels plus the final OME-TIFF can be large.
 
-## Verification
+## Verify an output
 
-At minimum, verify structure and a visual thumbnail before using the output in
-registration:
+Run this after every real conversion:
 
 ```bash
 python - <<'PY'
@@ -166,60 +198,138 @@ with tifffile.TiffFile(path) as tif:
     levels = tif.series[0].levels
     assert len(levels) >= 1, "missing image level"
     assert levels[0].shape[-1] == 3, "expected RGB output"
-    print("verified", path, "levels:", [level.shape for level in levels])
+    print("verified", path)
+    print("levels:", [level.shape for level in levels])
+    print("subifds:", len(tif.pages[0].pages))
 PY
 ```
 
-For pixel-level validation in a pipeline, sample known tissue coordinates from
-the source slide and compare RGB values after conversion. The decoder clips RGB
-conversion results to `0..255`, so out-of-range chroma values should not wrap
-around in the output.
+At minimum, also review a thumbnail visually before using the converted image
+for registration or handoff.
 
-For the lean local validation checklist, see
+For the current validation checklist and real-file record, see
 [`docs/validation_protocol.md`](docs/validation_protocol.md).
 
-## Validation Status
+## Validation status
 
-### What has been tested
+### Current evidence
 
 | Claim | Evidence | Confidence |
-|---|---|---|
-| YUYV decoder produces structurally correct RGB | Unit tests (grayscale, color tint, clipping); visual inspection of H&E tile | Medium |
-| OME-TIFF output passes tifffile validation | `is_ome=True`, `is_bigtiff=True`, 6 pyramid levels detected | Medium-high |
-| Pyramid SubIFD linkage works in tifffile | `tifffile.TiffFile.series[0].levels` enumerates all 6 levels | Medium-high |
-| Synthetic 33007 SVS → valid OME-TIFF end-to-end | `test_integration.py` passes with known pixel values | Medium |
-| Single-resolution output works | `--num-levels 1` path produces valid OME-TIFF with one level | Medium |
-| Disk-backed pyramid path is exercised | `test_memory.py` profiles synthetic conversions; strict mode available locally | Medium |
-| Works on real SVS file | lung SCC, post-Xenium H&E (3.2 GB, AT2/GT450, compression 33007) | Single file |
+| --- | --- | --- |
+| YUYV decoder produces expected RGB on controlled inputs | Unit tests for grayscale, color tint, clipping, and synthetic tile reconstruction | Medium |
+| Synthetic compression-33007 SVS converts end-to-end | Integration tests with known pixel values | Medium |
+| OME BigTIFF structure is readable | `tifffile` opens output as OME BigTIFF with pyramid levels | Medium-high |
+| SubIFD pyramid linkage works | `tifffile.TiffFile.series[0].levels` enumerates levels | Medium-high |
+| Single-resolution output works | `--num-levels 1` uses the same generalized writer path | Medium |
+| Disk-backed path is exercised | Synthetic memory profiling tests and memmap-vs-in-memory pyramid parity tests | Medium |
+| Real SVS structural conversion works | One Aperio `33007` lung H&E SVS converted to 3-level uncompressed OME BigTIFF | Single file |
 
-### What has NOT been tested (open questions)
+### Real-file validation snapshot
 
-| Claim | Status |
-|---|---|
-| Other Aperio scanner models (CS2, Versa, AT Turbo) | Not tested |
-| Other firmware versions of AT2/GT450 | Not tested |
-| Other tissue types or stains (IHC, IF, special stains) | Not tested |
-| Xenium Explorer H&E overlay workflow | **Planned, not yet performed** |
-| STalign registration to Xenium DAPI section | **Planned, not yet performed** |
-| Color accuracy vs. reference decoder (cross-validation) | Not performed — visual inspection only |
-| Multi-file reproducibility | Only one file tested |
+| Field | Result |
+| --- | --- |
+| Source | `67174_PT_Lung.svs` |
+| Compression | `33007` |
+| Dimensions | `39599 x 39858` px |
+| Source tiles | `256 x 256`, `24180` tiles |
+| Command | `--num-levels 3 --compression none --tile-size 512` |
+| Output levels | `(39858, 39599, 3)`, `(19929, 19799, 3)`, `(9964, 9899, 3)` |
+| Output structure | `is_bigtiff=True`, `is_ome=True`, `2` SubIFDs |
+| Output size | `5.86 GiB` / `6.30 GB` |
+| Peak RSS in local run | `1.91 GB` from `/usr/bin/time -l` |
+| Visual review | Pending manual thumbnail review |
 
-### How to help validate
+### Still open
 
-If you have access to Aperio SVS files with compression tag 33007 from different scanners or tissue types, please test the converter and report results (success or failure) via GitHub Issues. Include the scanner model, firmware version if known, and a `tifffile` tag dump of the source file.
+| Area | Status |
+| --- | --- |
+| Other Aperio scanner models | Not tested |
+| Other AT2/GT450 firmware/export settings | Not tested |
+| Other tissues, stains, IHC, IF, or special stains | Not tested |
+| Xenium Explorer H&E overlay workflow | Planned, not completed |
+| Space Ranger / Visium image input workflow | Intended, not completed |
+| Color accuracy vs. vendor/reference decoder | Not validated |
+| Multi-file reproducibility | One real file tested |
 
-## Web GUI (experimental)
+## Limitations
 
-A Flask-based drag-and-drop web interface is [available on PyPI](https://pypi.org/project/svs-to-ometiff-gui/):
+- Handles only Aperio Compression tag `33007` with the observed raw YUYV tile payload.
+- Does not handle standard JPEG SVS (`Compression=7`); use OpenSlide, libvips,
+  or Bio-Formats for those.
+- Does not handle JPEG 2000 SVS variants such as `33003` or `33005`.
+- Does not validate color fidelity against a scanner profile or reference decoder.
+- Does not recover from malformed, truncated, or corrupted tiles.
+- Requires substantial free disk space near the output path for temporary memmaps
+  and final OME-TIFF output.
+- RSS and runtime vary with OS page cache, disk speed, pyramid level count, tile
+  size, and compression codec behavior.
+
+## Downstream compatibility goals
+
+Outputs are intended to be ordinary tiled OME BigTIFF files for tools that can
+consume OME-TIFF pyramids, including:
+
+- Xenium Ranger / Xenium Explorer H&E registration and overlay workflows
+- Space Ranger image inputs after OME-TIFF conversion
+- QuPath
+- napari through `tifffile`
+- HALO and other OME-TIFF-aware pathology viewers
+
+These are compatibility goals, not a completed validation matrix. Please verify
+your own downstream import before relying on a converted slide.
+
+## Troubleshooting
+
+| Symptom | Likely cause | What to try |
+| --- | --- | --- |
+| `input uses compression 7` | Standard JPEG SVS, not Aperio `33007` | Use OpenSlide/libvips/Bio-Formats instead |
+| `pip install imagecodecs` error during write | Compression encoder unavailable in active Python env | Install `imagecodecs` or rerun with `--compression none` |
+| Output is very large | Uncompressed RGB OME-TIFF | Use `--compression lzw` if `imagecodecs` works |
+| Conversion uses lots of disk | Disk-backed RGB pyramid levels plus final output | Use fewer `--num-levels`, ensure free disk space near output |
+| Downstream viewer is slow | Large uncompressed BigTIFF or many levels | Try compressed output or fewer levels after validation |
+
+## Web GUI
+
+A separate experimental Flask GUI is available as `svs-to-ometiff-gui`:
 
 ```bash
 pip install svs-to-ometiff-gui
 svs-to-ometiff-gui
 ```
 
-Opens a browser at `http://127.0.0.1:8765` with a dark theme, drag-and-drop, progress streaming, and expandable settings panel.
+It opens a local browser UI at `http://127.0.0.1:8765` with drag-and-drop
+upload, progress streaming, and expandable settings.
 
-> **Note:** The GUI is experimental and separate from the core CLI package.
+> 📌 **Note:** The GUI is separate from this core CLI package.
+
+## Development
+
+```bash
+git clone git@github.com:tommy2scripts/svs-to-ometiff.git
+cd svs-to-ometiff
+pip install -e ".[dev]"
+python -m pytest -q
+python -m ruff check .
+```
+
+Strict local memory checks can be enabled manually:
+
+```bash
+SVS_OMETIFF_STRICT_MEMORY=1 python -m pytest tests/test_memory.py -v -s
+```
+
+## How to help validate
+
+If you have Aperio SVS files with Compression tag `33007`, please test and
+report the outcome through GitHub Issues. Useful details include:
+
+- scanner model and firmware, if known
+- tissue type and stain
+- source dimensions and tile size
+- source TIFF Compression tag
+- exact conversion command
+- output structural check results
+- whether visual review or downstream import passed
 
 ## License
 
