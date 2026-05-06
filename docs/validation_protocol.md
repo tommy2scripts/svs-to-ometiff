@@ -63,6 +63,20 @@ For each real file, record:
 - visual thumbnail review result
 - downstream import result if tested
 
+## 5. Current real-file record
+
+| Field | Result |
+| --- | --- |
+| Source | `67174_PT_Lung.svs` |
+| Compression | `33007` |
+| Dimensions / tile | `39599 x 39858`, source `256 x 256`, output `512 x 512` |
+| Command | `--num-levels 3 --compression none --tile-size 512` |
+| Output levels | `(39858, 39599, 3)`, `(19929, 19799, 3)`, `(9964, 9899, 3)` |
+| Structural result | BigTIFF + OME metadata + 2 SubIFDs present |
+| Visual review | Pending manual thumbnail review |
+
+Note: LZW retry failed in the local Python 3.9 environment because `imagecodecs` was unavailable; uncompressed output completed successfully.
+
 ## Pass/fail criteria
 
 Pass only if structural checks pass, synthetic pixel tests pass, no conversion exceptions occur, and visual review shows no obvious channel/order/tile artifacts.
