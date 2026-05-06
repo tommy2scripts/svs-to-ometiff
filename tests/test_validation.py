@@ -10,8 +10,14 @@ import tifffile
 from svs_to_ometiff.__main__ import main as module_main
 from svs_to_ometiff.cli import main as cli_main
 from svs_to_ometiff.pyramid import build_pyramid
-from svs_to_ometiff.tile_reader import _decode_tile_payload, parse_mpp_from_description
+from svs_to_ometiff.tile_reader import (
+    _decode_tile_payload,
+    iter_svs_rgb_tiles,
+    parse_mpp_from_description,
+    read_svs_full_image,
+)
 from svs_to_ometiff.writer import build_ome_xml, write_pyramidal_ometiff
+from helpers import write_synthetic_33007_svs
 
 
 def test_build_pyramid_rejects_non_rgb_input() -> None:
@@ -186,3 +192,17 @@ def test_decode_tile_payload_accepts_cropped_edge_payload() -> None:
 
     assert tile.shape == (1, 4, 3)
     np.testing.assert_array_equal(tile, 128)
+
+
+def test_iter_svs_rgb_tiles_reconstructs_synthetic_image(tmp_path: Path) -> None:
+    input_svs = tmp_path / "synthetic.svs"
+    write_synthetic_33007_svs(input_svs, width=32, height=32)
+
+    reconstructed = np.zeros((32, 32, 3), dtype=np.uint8)
+    for item in iter_svs_rgb_tiles(str(input_svs), progress_interval=0):
+        reconstructed[item["y0"] : item["y1"], item["x0"] : item["x1"]] = item[
+            "tile"
+        ][: item["y1"] - item["y0"], : item["x1"] - item["x0"]]
+
+    full_image, _ = read_svs_full_image(str(input_svs), progress_interval=0)
+    np.testing.assert_array_equal(reconstructed, full_image)

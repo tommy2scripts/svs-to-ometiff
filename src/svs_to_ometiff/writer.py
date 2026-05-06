@@ -9,6 +9,7 @@ that support SubIFD-linked pyramids.
 
 import os
 import time
+from collections.abc import Sequence
 from typing import Optional
 from xml.sax.saxutils import quoteattr
 
@@ -75,6 +76,109 @@ def build_ome_xml(
     )
 
 
+def _validate_rgb_level(level: np.ndarray, index: int) -> None:
+    if level.ndim != 3 or level.shape[2] != 3:
+        raise ValueError(f"Pyramid level {index} must be (H, W, 3), got {level.shape}")
+    if level.dtype != np.uint8:
+        raise ValueError(f"Pyramid level {index} must be uint8, got {level.dtype}")
+    if level.shape[0] <= 0 or level.shape[1] <= 0:
+        raise ValueError(f"Pyramid level {index} has empty dimensions: {level.shape}")
+
+
+def _iter_padded_tiles(level: np.ndarray, tile_size: int):
+    """Yield row-major square TIFF tiles, padding edge tiles to tile_size."""
+    height, width = level.shape[:2]
+    for y0 in range(0, height, tile_size):
+        for x0 in range(0, width, tile_size):
+            tile = level[y0 : y0 + tile_size, x0 : x0 + tile_size]
+            if tile.shape[0] == tile_size and tile.shape[1] == tile_size:
+                yield np.ascontiguousarray(tile)
+                continue
+
+            padded = np.zeros((tile_size, tile_size, 3), dtype=np.uint8)
+            padded[: tile.shape[0], : tile.shape[1]] = tile
+            yield padded
+
+
+def write_pyramidal_ometiff_from_levels(
+    output_path: str,
+    levels: Sequence[np.ndarray],
+    mpp: float,
+    *,
+    tile_size: int = 512,
+    compression: Optional[str] = "lzw",
+    image_name: str = "Image",
+    verbose: bool = True,
+    progress_logger: Optional[ProgressLogger] = None,
+) -> None:
+    """Write a pyramidal OME-TIFF from array-like levels via tile iterators."""
+    if not levels:
+        raise ValueError("levels must contain at least one level")
+    if tile_size <= 0:
+        raise ValueError(f"tile_size must be positive, got {tile_size}")
+    if tile_size % 16 != 0:
+        raise ValueError(
+            f"tile_size must be divisible by 16 for tiled TIFF output, got {tile_size}"
+        )
+    if mpp <= 0:
+        raise ValueError(f"mpp must be positive, got {mpp}")
+
+    normalized_levels = [np.asarray(level) for level in levels]
+    for index, level in enumerate(normalized_levels):
+        _validate_rgb_level(level, index)
+
+    full_img = normalized_levels[0]
+    full_h, full_w = full_img.shape[:2]
+    ome_xml = build_ome_xml(full_w, full_h, mpp, image_name)
+
+    if os.path.exists(output_path):
+        os.remove(output_path)
+        _log(verbose, progress_logger, f"Removed existing file: {output_path}")
+
+    _log(verbose, progress_logger, "Writing pyramidal OME-TIFF with SubIFD linkage...")
+    _log(verbose, progress_logger, f"Levels: {[p.shape[:2] for p in normalized_levels]}")
+
+    t0 = time.time()
+    n_subifds = len(normalized_levels) - 1
+
+    with tifffile.TiffWriter(output_path, bigtiff=True) as tif:
+        tif.write(
+            _iter_padded_tiles(full_img, tile_size),
+            shape=full_img.shape,
+            dtype=full_img.dtype,
+            description=ome_xml,
+            subifds=n_subifds if n_subifds else None,
+            tile=(tile_size, tile_size),
+            compression=compression,
+            photometric="rgb",
+            metadata=None,
+            resolution=(1e4 / mpp, 1e4 / mpp),
+            resolutionunit=tifffile.RESUNIT.CENTIMETER,
+        )
+        _log(verbose, progress_logger, f"  Level 0: {full_w}x{full_h} written")
+
+        for level_index, level in enumerate(normalized_levels[1:], start=1):
+            tif.write(
+                _iter_padded_tiles(level, tile_size),
+                shape=level.shape,
+                dtype=level.dtype,
+                subfiletype=1,
+                tile=(tile_size, tile_size),
+                compression=compression,
+                photometric="rgb",
+                metadata=None,
+            )
+            _log(
+                verbose,
+                progress_logger,
+                f"  Level {level_index}: {level.shape[1]}x{level.shape[0]} written",
+            )
+
+    elapsed = time.time() - t0
+    size_gb = os.path.getsize(output_path) / 1e9
+    _log(verbose, progress_logger, f"\nDone in {elapsed:.0f}s, size={size_gb:.2f} GB")
+
+
 def write_pyramidal_ometiff(
     output_path: str,
     pyramid: list[np.ndarray],
@@ -89,101 +193,17 @@ def write_pyramidal_ometiff(
     """
     Write a pyramidal OME-TIFF with SubIFD-linked resolution levels.
 
-    The full-resolution image (pyramid[0]) is written as the base IFD with
-    ``subifds=N-1`` pointing to the sub-resolution levels. Each sub-level is
-    written as a SubIFD with ``subfiletype=1`` (reduced-resolution image).
-    This structure is detected as a pyramid by tifffile and should be
-    compatible with readers that support SubIFD-linked pyramids.
-
-    Uses BigTIFF format (required for images >4 GB), LZW lossless compression,
-    and tiled storage.
-
-    Args:
-        output_path: Path for the output OME-TIFF file.
-        pyramid: List of numpy arrays, pyramid[0] is full resolution,
-                 pyramid[1:] are downsampled levels.
-        mpp: Microns per pixel for the full-resolution level.
-        tile_size: Output tile size (square, default 512).
-        compression: TIFF compression scheme ('lzw', 'zlib', 'deflate', etc.),
-            or None for uncompressed output.
-        image_name: Name for the OME Image element.
-        verbose: Print progress information.
-        progress_logger: Optional callable used instead of print.
-
-    Raises:
-        ValueError: If pyramid is empty or arguments are invalid.
-        OSError: If the output file cannot be written.
+    The public array-list API is preserved for tests and callers. Internally it
+    delegates to the streaming tile writer so edge handling and SubIFD writing
+    use the same code path as out-of-core conversion.
     """
-    if not pyramid:
-        raise ValueError("pyramid must contain at least one level")
-    if tile_size <= 0:
-        raise ValueError(f"tile_size must be positive, got {tile_size}")
-    if tile_size % 16 != 0:
-        raise ValueError(
-            f"tile_size must be divisible by 16 for tiled TIFF output, got {tile_size}"
-        )
-    if mpp <= 0:
-        raise ValueError(f"mpp must be positive, got {mpp}")
-
-    full_img = pyramid[0]
-    for level, img in enumerate(pyramid):
-        if img.ndim != 3 or img.shape[2] != 3:
-            raise ValueError(f"Pyramid level {level} must be (H, W, 3), got {img.shape}")
-        if img.dtype != np.uint8:
-            raise ValueError(f"Pyramid level {level} must be uint8, got {img.dtype}")
-        if img.shape[0] <= 0 or img.shape[1] <= 0:
-            raise ValueError(f"Pyramid level {level} has empty dimensions: {img.shape}")
-
-    full_h, full_w = full_img.shape[:2]
-
-    # Build OME-XML (ASCII-compatible)
-    ome_xml = build_ome_xml(full_w, full_h, mpp, image_name)
-
-    # Remove existing file
-    if os.path.exists(output_path):
-        os.remove(output_path)
-        _log(verbose, progress_logger, f"Removed existing file: {output_path}")
-
-    _log(verbose, progress_logger, "Writing pyramidal OME-TIFF with SubIFD linkage...")
-    _log(verbose, progress_logger, f"Levels: {[p.shape[:2] for p in pyramid]}")
-
-    t0 = time.time()
-
-    n_subifds = len(pyramid) - 1  # Number of sub-resolution levels
-
-    with tifffile.TiffWriter(output_path, bigtiff=True) as tif:
-        # Write full-resolution level 0 with subifds declaration
-        tif.write(
-            full_img,
-            description=ome_xml,
-            subifds=n_subifds,
-            tile=(tile_size, tile_size),
-            compression=compression,
-            photometric="rgb",
-            metadata=None,
-            resolution=(1e4 / mpp, 1e4 / mpp),
-            resolutionunit=tifffile.RESUNIT.CENTIMETER,
-        )
-        _log(verbose, progress_logger, f"  Level 0: {full_w}x{full_h} written")
-
-        # Write sub-resolution levels as SubIFDs
-        for level in range(1, len(pyramid)):
-            img = pyramid[level]
-            tif.write(
-                img,
-                subfiletype=1,  # Reduced-resolution image
-                tile=(tile_size, tile_size),
-                compression=compression,
-                photometric="rgb",
-                metadata=None,
-            )
-            _log(
-                verbose,
-                progress_logger,
-                f"  Level {level}: {img.shape[1]}x{img.shape[0]} written",
-            )
-
-    elapsed = time.time() - t0
-    size_gb = os.path.getsize(output_path) / 1e9
-
-    _log(verbose, progress_logger, f"\nDone in {elapsed:.0f}s, size={size_gb:.2f} GB")
+    write_pyramidal_ometiff_from_levels(
+        output_path,
+        pyramid,
+        mpp,
+        tile_size=tile_size,
+        compression=compression,
+        image_name=image_name,
+        verbose=verbose,
+        progress_logger=progress_logger,
+    )

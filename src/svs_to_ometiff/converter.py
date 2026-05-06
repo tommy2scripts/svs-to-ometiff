@@ -6,15 +6,18 @@ tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 """
 
 import os
+import tempfile
 from typing import Any, Optional, Union
 
 import numpy as np
 
 from svs_to_ometiff.config import ConvertConfig
-from svs_to_ometiff.pyramid import build_pyramid
-from svs_to_ometiff.tile_reader import read_svs_full_image, read_svs_metadata
+from svs_to_ometiff.pyramid import build_pyramid_memmaps
+from svs_to_ometiff.tile_reader import iter_svs_rgb_tiles, read_svs_metadata
 from svs_to_ometiff.utils import _log
-from svs_to_ometiff.writer import write_pyramidal_ometiff
+from svs_to_ometiff.writer import (
+    write_pyramidal_ometiff_from_levels as write_pyramidal_ometiff,
+)
 
 
 _LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
@@ -38,12 +41,13 @@ def estimate_peak_ram_bytes(
     downsample_factor: int = 2,
 ) -> int:
     """
-    Estimate peak resident RAM for full RGB image plus pyramid levels.
+    Estimate peak resident RAM for the streaming/out-of-core conversion path.
 
-    This is intentionally conservative. The full-resolution image uses
-    ``width * height * 3`` bytes, and the generated pyramid adds a geometric
-    series of smaller RGB arrays. Temporary decoder arrays and TIFF buffers add
-    additional overhead at runtime.
+    The optimized path stages full-resolution and lower pyramid levels on disk
+    as memmaps, so expected heap/RSS pressure is dominated by source tiles,
+    downsampling strips, TIFF writer tile buffers, and OS page-cache behavior.
+    The estimate intentionally tracks the validation target of roughly 1.2x the
+    full-resolution RGB byte count rather than the old full-pyramid footprint.
     """
     if width <= 0 or height <= 0:
         raise ValueError(f"Image dimensions must be positive, got {width}x{height}")
@@ -54,16 +58,7 @@ def estimate_peak_ram_bytes(
             f"downsample_factor must be at least 2, got {downsample_factor}"
         )
 
-    total_pixels = 0
-    level_width = width
-    level_height = height
-    for _ in range(num_levels):
-        total_pixels += level_width * level_height
-        level_width = max(1, level_width // downsample_factor)
-        level_height = max(1, level_height // downsample_factor)
-
-    rgb_bytes = total_pixels * 3
-    return int(rgb_bytes * 1.25)
+    return int(width * height * 3 * 1.2)
 
 
 def _coerce_convert_config(
@@ -122,6 +117,40 @@ def _raise_write_error_with_context(exc: Exception, compression: Optional[str]) 
         ) from exc
 
     raise exc
+
+
+def _close_memmaps(levels: list[np.ndarray]) -> None:
+    for level in levels:
+        if isinstance(level, np.memmap):
+            level.flush()
+            mmap = getattr(level, "_mmap", None)
+            if mmap is not None:
+                mmap.close()
+
+
+def _stage_level0_memmap(
+    config: ConvertConfig,
+    metadata: dict[str, object],
+    temp_dir: str,
+) -> np.memmap:
+    height = int(metadata["height"])
+    width = int(metadata["width"])
+    path = os.path.join(temp_dir, "pyramid_level_0.dat")
+    level0 = np.memmap(path, dtype=np.uint8, mode="w+", shape=(height, width, 3))
+
+    for item in iter_svs_rgb_tiles(
+        config.input_svs,
+        progress_interval=config.tile_progress_interval if config.verbose else 0,
+    ):
+        y0 = item["y0"]
+        y1 = item["y1"]
+        x0 = item["x0"]
+        x1 = item["x1"]
+        tile_rgb = item["tile"]
+        level0[y0:y1, x0:x1] = tile_rgb[: y1 - y0, : x1 - x0]
+
+    level0.flush()
+    return level0
 
 
 def convert(
@@ -183,7 +212,7 @@ def convert(
     _log(
         config.verbose,
         config.progress_logger,
-        f"Estimated peak RAM: {estimated_ram_gb:.1f} GB",
+        f"Estimated streaming peak RAM target: {estimated_ram_gb:.1f} GB",
     )
     if estimated_ram_gb > 30:
         _log(
@@ -192,50 +221,53 @@ def convert(
             "WARNING: estimated peak RAM exceeds 30 GB; run on a high-memory host.",
         )
 
-    full_image, metadata = read_svs_full_image(
-        config.input_svs,
-        progress_interval=config.tile_progress_interval if config.verbose else 0,
-    )
+    output_dir = os.path.dirname(os.path.abspath(config.output_ometiff)) or None
+    levels: list[np.ndarray] = []
+    with tempfile.TemporaryDirectory(prefix="svs_to_ometiff_", dir=output_dir) as temp_dir:
+        _log(config.verbose, config.progress_logger, "Decoding SVS tiles to disk-backed level 0...")
+        level0 = _stage_level0_memmap(config, metadata, temp_dir)
 
-    mpp = float(metadata["mpp"])
-    _log(config.verbose, config.progress_logger, f"MPP: {mpp} um/px")
-    _log(
-        config.verbose,
-        config.progress_logger,
-        f"Building {config.num_levels}-level pyramid...",
-    )
+        mpp = float(metadata["mpp"])
+        _log(config.verbose, config.progress_logger, f"MPP: {mpp} um/px")
+        _log(
+            config.verbose,
+            config.progress_logger,
+            f"Building {config.num_levels}-level pyramid out of core...",
+        )
 
-    pyramid = build_pyramid(
-        full_image,
-        num_levels=config.num_levels,
-        downsample_factor=config.downsample_factor,
-        edge_mode=config.edge_mode,
-        verbose=config.verbose,
-        progress_logger=config.progress_logger,
-    )
-
-    del full_image
-
-    _log(config.verbose, config.progress_logger, "Writing OME-TIFF...")
-    try:
-        write_pyramidal_ometiff(
-            config.output_ometiff,
-            pyramid,
-            mpp,
-            tile_size=config.tile_size,
-            compression=config.compression,
-            image_name=image_name,
+        levels = build_pyramid_memmaps(
+            level0,
+            temp_dir,
+            num_levels=config.num_levels,
+            downsample_factor=config.downsample_factor,
+            edge_mode=config.edge_mode,
             verbose=config.verbose,
             progress_logger=config.progress_logger,
         )
-    except Exception as exc:
-        _raise_write_error_with_context(exc, config.compression)
+        pyramid_shapes = [tuple(np.asarray(level).shape) for level in levels]
+
+        _log(config.verbose, config.progress_logger, "Writing OME-TIFF...")
+        try:
+            write_pyramidal_ometiff(
+                config.output_ometiff,
+                levels,
+                mpp,
+                tile_size=config.tile_size,
+                compression=config.compression,
+                image_name=image_name,
+                verbose=config.verbose,
+                progress_logger=config.progress_logger,
+            )
+        except Exception as exc:
+            _raise_write_error_with_context(exc, config.compression)
+        finally:
+            _close_memmaps(levels)
 
     output_size = os.path.getsize(config.output_ometiff)
     result: dict[str, object] = {
         **metadata,
         "estimated_peak_ram_bytes": estimated_ram,
-        "pyramid_shapes": [tuple(np.asarray(level).shape) for level in pyramid],
+        "pyramid_shapes": pyramid_shapes,
         "output_path": config.output_ometiff,
         "output_size_bytes": output_size,
     }
