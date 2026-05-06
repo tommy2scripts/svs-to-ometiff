@@ -53,6 +53,16 @@ pip install "svs-to-ometiff[dev]"
 svs-to-ometiff input.svs output.ome.tiff
 ```
 
+Fast single-resolution conversion, useful when downstream tooling does not need
+a pyramid:
+
+```bash
+svs-to-ometiff input.svs output.ome.tiff --num-levels 1
+```
+
+`--num-levels 1` writes a valid single-resolution OME-TIFF and skips lower
+pyramid generation.
+
 Verify the output:
 
 ```bash
@@ -99,8 +109,8 @@ The converter does three things:
 
 1. Decodes each Aperio 33007 tile from YUYV YCbCr 4:2:2 to RGB with BT.601
    full-range color conversion.
-2. Reassembles the full-resolution RGB image and builds a downsampled pyramid
-   by block averaging.
+2. Stages the full-resolution RGB image and lower pyramid levels as
+   disk-backed arrays, then builds lower levels by block averaging.
 3. Writes a BigTIFF OME-TIFF with tiled storage and SubIFD-linked pyramid
    levels for downstream viewer compatibility.
 
@@ -108,10 +118,12 @@ The converter does three things:
 
 - Only Aperio compression `33007` is handled. Standard JPEG, JPEG 2000, LZW,
   and tiled TIFF/SVS files should be opened with standard tools.
-- The full-resolution RGB image and generated pyramid are held in RAM. As a
-  rule of thumb, peak memory is about `width * height * 3 * 1.65` bytes for a
-  six-level 2x pyramid, plus TIFF writer buffers. A 40,000 x 40,000 slide
-  typically needs 8-12 GB; very large slides can exceed 30 GB.
+- Conversion uses disk-backed intermediate arrays to avoid holding the full
+  pyramid in Python heap memory. Free disk space near the output path must be
+  sufficient for temporary RGB pyramid data plus the final OME-TIFF.
+- The CLI estimates a streaming peak-RAM target of about
+  `width * height * 3 * 1.2` bytes, but real RSS can vary with OS page cache,
+  TIFF tile buffers, and compression codec behavior.
 - The CLI estimates peak RAM before decoding and prints a warning above 30 GB.
 - The expected source tile width must be even because YUYV 4:2:2 shares chroma
   across two horizontal pixels.
@@ -152,7 +164,7 @@ with tifffile.TiffFile(path) as tif:
     assert tif.is_ome, "missing OME metadata"
     assert tif.is_bigtiff, "expected BigTIFF output"
     levels = tif.series[0].levels
-    assert len(levels) >= 2, "missing pyramid levels"
+    assert len(levels) >= 1, "missing image level"
     assert levels[0].shape[-1] == 3, "expected RGB output"
     print("verified", path, "levels:", [level.shape for level in levels])
 PY
@@ -162,6 +174,9 @@ For pixel-level validation in a pipeline, sample known tissue coordinates from
 the source slide and compare RGB values after conversion. The decoder clips RGB
 conversion results to `0..255`, so out-of-range chroma values should not wrap
 around in the output.
+
+For the lean local validation checklist, see
+[`docs/validation_protocol.md`](docs/validation_protocol.md).
 
 ## Validation Status
 
@@ -173,6 +188,8 @@ around in the output.
 | OME-TIFF output passes tifffile validation | `is_ome=True`, `is_bigtiff=True`, 6 pyramid levels detected | Medium-high |
 | Pyramid SubIFD linkage works in tifffile | `tifffile.TiffFile.series[0].levels` enumerates all 6 levels | Medium-high |
 | Synthetic 33007 SVS → valid OME-TIFF end-to-end | `test_integration.py` passes with known pixel values | Medium |
+| Single-resolution output works | `--num-levels 1` path produces valid OME-TIFF with one level | Medium |
+| Disk-backed pyramid path is exercised | `test_memory.py` profiles synthetic conversions; strict mode available locally | Medium |
 | Works on real SVS file | lung SCC, post-Xenium H&E (3.2 GB, AT2/GT450, compression 33007) | Single file |
 
 ### What has NOT been tested (open questions)
