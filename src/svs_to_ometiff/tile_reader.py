@@ -1,16 +1,16 @@
 """
 Tile reader for Aperio SVS files with compression 33007 (YUYV).
 
-Reads all 256x256 YUYV-encoded tiles from an SVS file and reassembles
-the full-resolution RGB image in memory. Handles edge tiles that may
-be smaller than 256x256 due to image dimensions not being multiples
-of the tile size.
+Reads 256x256 YUYV-encoded tiles from an SVS file and can either yield them
+incrementally or reassemble the full-resolution RGB image in memory. Handles
+edge tiles that may be smaller than 256x256 due to image dimensions not being
+multiples of the tile size.
 """
 
 import math
 import re
 import time
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 import tifffile
@@ -143,38 +143,20 @@ def _decode_tile_payload(
     )
 
 
-def read_svs_full_image(
+def iter_svs_rgb_tiles(
     svs_path: str,
     *,
     progress_interval: int = 20,
-) -> tuple[np.ndarray, dict[str, Any]]:
+) -> Iterator[dict[str, Any]]:
     """
-    Read all tiles from an SVS file and assemble the full-resolution RGB image.
+    Yield decoded RGB source tiles with their placement coordinates.
 
-    Decodes every tile using the YUYV decoder and places it at the correct
-    position in the output image. Edge tiles are cropped to fit within the
-    actual image dimensions.
-
-    IMPORTANT: The full-resolution image can be large (e.g., ~4.5 GB for a
-    39,599×39,858 image). Ensure sufficient RAM is available before calling.
-
-    Args:
-        svs_path: Path to the Aperio SVS file.
-        progress_interval: Print progress every N tile rows (0 to suppress).
-
-    Returns:
-        Tuple of (full_image, metadata) where:
-          - full_image: uint8 numpy array of shape (height, width, 3).
-          - metadata: dict with keys 'mpp', 'width', 'height',
-            'src_tile_width', 'src_tile_height', 'tile_count',
-            'n_tiles_x', 'n_tiles_y'.
-
-    Raises:
-        ValueError: If the file is not a valid SVS or has unexpected structure.
-        IOError: If the file cannot be read.
+    This is the low-memory primitive used by the streaming conversion path.
+    It decodes one source tile at a time instead of assembling the full image
+    in RAM. Edge tiles are yielded at their decoded payload size and include
+    ``x0``, ``y0``, ``x1``, and ``y1`` bounds for placement/cropping.
     """
     t_start = time.time()
-
     metadata = read_svs_metadata(svs_path)
     img_w = metadata["width"]
     img_h = metadata["height"]
@@ -183,16 +165,6 @@ def read_svs_full_image(
     n_tiles_x = metadata["n_tiles_x"]
     n_tiles_y = metadata["n_tiles_y"]
 
-    # Build tile index lookup: (row, col) -> linear index
-    tile_idx = {}
-    for ty in range(n_tiles_y):
-        for tx in range(n_tiles_x):
-            tile_idx[(ty, tx)] = ty * n_tiles_x + tx
-
-    # Allocate full image
-    full_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)
-
-    # Re-open for reading (filehandle may be closed after context manager)
     with tifffile.TiffFile(svs_path) as tif:
         page0 = tif.pages[0]
         offsets = list(page0.dataoffsets)
@@ -213,8 +185,8 @@ def read_svs_full_image(
             for tx in range(n_tiles_x):
                 x0 = tx * src_tile_w
                 x1 = min(x0 + src_tile_w, img_w)
+                idx = ty * n_tiles_x + tx
 
-                idx = tile_idx[(ty, tx)]
                 fh.seek(offsets[idx])
                 raw = fh.read(bytecounts[idx])
                 tile_rgb = _decode_tile_payload(
@@ -225,11 +197,68 @@ def read_svs_full_image(
                     visible_height=y1 - y0,
                 )
 
-                # Place tile, cropping to image bounds (handles edge tiles)
-                full_img[y0:y1, x0:x1] = tile_rgb[: y1 - y0, : x1 - x0]
+                yield {
+                    "tile": tile_rgb,
+                    "x0": x0,
+                    "y0": y0,
+                    "x1": x1,
+                    "y1": y1,
+                    "tile_x": tx,
+                    "tile_y": ty,
+                }
 
-    elapsed = time.time() - t_start
     if progress_interval > 0:
+        elapsed = time.time() - t_start
+        print(f"Tiles decoded in {elapsed:.0f}s")
+
+
+def read_svs_full_image(
+    svs_path: str,
+    *,
+    progress_interval: int = 20,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """
+    Read all tiles from an SVS file and assemble the full-resolution RGB image.
+
+    Decodes every tile using the YUYV decoder and places it at the correct
+    position in the output image. Edge tiles are cropped to fit within the
+    actual image dimensions.
+
+    IMPORTANT: The full-resolution image can be large (e.g., ~4.5 GB for a
+    39,599×39,858 image). Prefer ``iter_svs_rgb_tiles`` for low-memory paths.
+
+    Args:
+        svs_path: Path to the Aperio SVS file.
+        progress_interval: Print progress every N tile rows (0 to suppress).
+
+    Returns:
+        Tuple of (full_image, metadata) where:
+          - full_image: uint8 numpy array of shape (height, width, 3).
+          - metadata: dict with keys 'mpp', 'width', 'height',
+            'src_tile_width', 'src_tile_height', 'tile_count',
+            'n_tiles_x', 'n_tiles_y'.
+
+    Raises:
+        ValueError: If the file is not a valid SVS or has unexpected structure.
+        IOError: If the file cannot be read.
+    """
+    metadata = read_svs_metadata(svs_path)
+    img_w = metadata["width"]
+    img_h = metadata["height"]
+
+    full_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)
+
+    t_start = time.time()
+    for item in iter_svs_rgb_tiles(svs_path, progress_interval=progress_interval):
+        y0 = item["y0"]
+        y1 = item["y1"]
+        x0 = item["x0"]
+        x1 = item["x1"]
+        tile_rgb = item["tile"]
+        full_img[y0:y1, x0:x1] = tile_rgb[: y1 - y0, : x1 - x0]
+
+    if progress_interval > 0:
+        elapsed = time.time() - t_start
         print(f"Full image read in {elapsed:.0f}s")
         print(f"Image shape: {full_img.shape}, dtype: {full_img.dtype}")
 
