@@ -10,14 +10,14 @@ from typing import Optional
 
 import click
 
+from svs_to_ometiff import __version__
 from svs_to_ometiff.converter import convert
 
 
 def _print_experimental_warning() -> None:
     """Print a prominent experimental-status warning to stderr."""
-    import sys
     sys.stderr.write(
-        "⚠️  svs-to-ometiff v0.4.0 — EXPERIMENTAL\n"
+        f"WARNING  svs-to-ometiff v{__version__} - EXPERIMENTAL\n"
         "   Validated on 1 file (AT2/GT450, lung H&E, compression 33007).\n"
         "   Output has NOT been validated for diagnostic use.\n"
         "   Please verify results independently before any clinical or research use.\n"
@@ -37,14 +37,14 @@ def _print_experimental_warning() -> None:
 )
 @click.option(
     "--compression",
-    default="lzw",
+    default="none",
     type=click.Choice(["lzw", "zlib", "deflate", "none"]),
     show_default=True,
-    help="TIFF compression scheme. Use 'lzw' for lossless.",
+    help="TIFF compression scheme. Use 'none' for maximum compatibility.",
 )
 @click.option(
     "--num-levels",
-    default=6,
+    default=3,
     type=int,
     show_default=True,
     help="Number of pyramid levels (including full resolution).",
@@ -79,7 +79,7 @@ def _print_experimental_warning() -> None:
     is_flag=True,
     help="Print detailed progress, including every source tile row.",
 )
-@click.version_option(version="0.4.0", prog_name="svs-to-ometiff")
+@click.version_option(version=__version__, prog_name="svs-to-ometiff")
 def main(
     input_svs: str,
     output_ometiff: str,
@@ -105,7 +105,7 @@ def main(
 
     Example:
 
-        svs-to-ometiff slide.svs slide.ome.tiff --tile-size 512 --compression lzw
+        svs-to-ometiff slide.svs slide.ome.tiff --tile-size 512 --compression none
     """
     show_progress = verbose or not quiet
     tile_progress_interval = 1 if verbose else 20
