@@ -13,7 +13,7 @@ Modules:
     cli           — Click-based command-line interface
 """
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __all__ = [
     "yuyv_to_rgb",
     "read_svs_full_image",
@@ -24,6 +24,8 @@ __all__ = [
     "ConvertConfig",
     "convert",
     "estimate_peak_ram_bytes",
+    "inspect_svs",
+    "verify_ometiff",
 ]
 
 from svs_to_ometiff.yuyv_decoder import yuyv_to_rgb
@@ -32,3 +34,5 @@ from svs_to_ometiff.pyramid import build_pyramid
 from svs_to_ometiff.writer import write_pyramidal_ometiff, build_ome_xml
 from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff.converter import convert, estimate_peak_ram_bytes
+from svs_to_ometiff.verify import verify_ometiff
+from svs_to_ometiff.inspect import inspect_svs

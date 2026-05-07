@@ -22,8 +22,8 @@ from svs_to_ometiff.writer import (
 
 _LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
     "tile_size": 512,
-    "compression": "lzw",
-    "num_levels": 6,
+    "compression": None,
+    "num_levels": 3,
     "downsample_factor": 2,
     "edge_mode": "crop",
     "image_name": None,
