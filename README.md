@@ -16,8 +16,8 @@ Convert Aperio SVS files with private compression tag `33007` into OME BigTIFF.
 | Question | Answer |
 | --- | --- |
 | Primary use | Convert Aperio SVS `Compression=33007` to RGB OME BigTIFF |
-| Default output | Pyramidal OME BigTIFF with LZW compression |
-| Safe fallback | `--compression none --num-levels 3 --tile-size 512` |
+| Default output | Pyramidal OME BigTIFF (no compression by default) |
+| Validated profile | `--compression none --num-levels 3 --tile-size 512` (these are the defaults) |
 | Memory model | Streamed tile decode plus disk-backed RGB pyramid levels |
 | Current validation | Synthetic tests plus one real lung H&E SVS structural check |
 | Not for | JPEG/JPEG 2000 SVS, diagnostic use, unvalidated scanners |
@@ -79,14 +79,14 @@ pip install "svs-to-ometiff[dev]"
 
 ### Compression dependency note
 
-The default output compression is `lzw`, which depends on `imagecodecs` through
+Compressed output (`lzw`, `zlib`, or `deflate`) depends on `imagecodecs` through
 `tifffile`. A normal package install declares `imagecodecs` as a dependency.
 
-If you are using an editable/no-deps environment or a platform where
-`imagecodecs` is unavailable, use uncompressed output:
+The default output compression is `none` (uncompressed), so `imagecodecs` is only
+needed when you explicitly choose a compression scheme:
 
 ```bash
-svs-to-ometiff input.svs output.ome.tiff --compression none
+svs-to-ometiff input.svs output.ome.tiff --compression lzw
 ```
 
 Uncompressed output is larger but is the safest fallback for compatibility and debugging.
@@ -139,8 +139,8 @@ python -m svs_to_ometiff input.svs output.ome.tiff
 | Option | Default | Use when |
 | --- | --- | --- |
 | `--tile-size` | `512` | You need a different square output tile size |
-| `--compression` | `lzw` | Choose `lzw`, `zlib`, `deflate`, or `none` |
-| `--num-levels` | `6` | Reduce levels for faster conversion or use `1` for single-resolution output |
+| `--compression` | `none` | Choose `lzw`, `zlib`, `deflate`, or `none` |
+| `--num-levels` | `3` | Reduce levels for faster conversion or use `1` for single-resolution output |
 | `--downsample-factor` | `2` | Change pyramid spacing between levels |
 | `--edge-mode` | `crop` | Use `pad` if you prefer padded borders over cropped odd edges |
 | `--image-name` | input stem | Override the OME `Image` name |
@@ -284,7 +284,7 @@ your own downstream import before relying on a converted slide.
 | --- | --- | --- |
 | `input uses compression 7` | Standard JPEG SVS, not Aperio `33007` | Use OpenSlide/libvips/Bio-Formats instead |
 | `pip install imagecodecs` error during write | Compression encoder unavailable in active Python env | Install `imagecodecs` or rerun with `--compression none` |
-| Output is very large | Uncompressed RGB OME-TIFF | Use `--compression lzw` if `imagecodecs` works |
+| Output is very large | Default is uncompressed (`--compression none`) | Use `--compression lzw` if `imagecodecs` is available |
 | Conversion uses lots of disk | Disk-backed RGB pyramid levels plus final output | Use fewer `--num-levels`, ensure free disk space near output |
 | Downstream viewer is slow | Large uncompressed BigTIFF or many levels | Try compressed output or fewer levels after validation |
 
