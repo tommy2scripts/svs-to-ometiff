@@ -46,6 +46,8 @@ dev = [
 
 [project.scripts]
 svs-to-ometiff = "svs_to_ometiff.cli:main"
+svs-to-ometiff-verify = "svs_to_ometiff.verify:main"
+svs-to-ometiff-inspect = "svs_to_ometiff.inspect:main"
 
 [project.urls]
 Homepage = "https://github.com/tommy2scripts/svs-to-ometiff"
