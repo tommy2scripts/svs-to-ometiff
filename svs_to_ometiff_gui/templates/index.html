@@ -157,7 +157,7 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
   <!-- LEFT COLUMN -->
   <div class="left-col">
     <div class="panel">
-      <div class="dropzone" id="dropzone">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop SVS file or click to browse">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <div class="dropzone-text">Drop <strong>.svs</strong> file here or click to browse</div>
       </div>
@@ -272,7 +272,7 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
   const slideInfo = $('slideInfo'), slideInfoGrid = $('slideInfoGrid');
   const convertibleBadge = $('convertibleBadge');
   const CIRC = 2 * Math.PI * 52; // stroke-dasharray
-  let currentRequestId = null, inspectTimer = null;
+  let currentRequestId = null, inspectTimer = null, inspectAbort = null;
 
   function deriveOutput(p) {
     if (!p) return '';
@@ -297,7 +297,9 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
   }
 
   function fetchInspect(path) {
-    fetch('/inspect?path=' + encodeURIComponent(path))
+    if (inspectAbort) inspectAbort.abort();
+    inspectAbort = new AbortController();
+    fetch('/inspect?path=' + encodeURIComponent(path), { signal: inspectAbort.signal })
       .then(r => r.json())
       .then(data => {
         if (data.error) { slideInfo.classList.remove('visible'); return; }
@@ -323,7 +325,9 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
         }
         slideInfo.classList.add('visible');
       })
-      .catch(() => slideInfo.classList.remove('visible'));
+      .catch(err => {
+        if (err.name !== 'AbortError') slideInfo.classList.remove('visible');
+      });
   }
 
   inputPath.addEventListener('input', () => { updateOutput(); scheduleInspect(); });
@@ -345,6 +349,7 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
     if (f && f.length) { inputPath.value = f[0].name; updateOutput(); scheduleInspect(); $('pathHint').classList.remove('hidden'); }
   });
   dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
 
   // Settings toggle
   settingsToggle.addEventListener('click', () => {

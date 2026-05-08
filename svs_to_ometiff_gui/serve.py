@@ -8,17 +8,19 @@ Usage:
 Opens browser at http://127.0.0.1:8765
 """
 
+import json
 import os
 import re
+import subprocess
 import sys
-import json
-import uuid
 import threading
+import uuid
 import webbrowser
+from pathlib import Path
 from queue import Queue
 from typing import Optional
 
-from flask import Flask, request, jsonify, Response, render_template
+from flask import Flask, Response, jsonify, render_template, request
 
 from svs_to_ometiff.converter import convert
 from svs_to_ometiff.inspect import inspect_svs
@@ -27,7 +29,7 @@ app = Flask(__name__)
 
 # In-memory store for progress queues
 _progress_queues: dict[str, Queue] = {}
-_active_conversion = False
+_state = {"active": False}
 _latest_events: dict[str, dict] = {}
 
 WARNING_BANNER = """
@@ -49,8 +51,8 @@ WARNING_BANNER = """
 # ---------------------------------------------------------------------------
 # The converter emits text messages via progress_logger. We parse these to
 # estimate a percentage using a phased model:
-#   0 – 10 %   reading metadata / setup
-#  10 – 60 %   tile decoding  (track "Tile row X of Y")
+#   0 - 10 %   reading metadata / setup
+#  10 - 60 %   tile decoding  (track "Tile row X of Y")
 #  60 – 85 %   pyramid building
 #  85 – 98 %   writing OME-TIFF
 #  100 %       done
@@ -91,19 +93,20 @@ def _estimate_percent(message: str) -> Optional[float]:
 
 def _resolve_path(path: str) -> Optional[str]:
     """If path is a bare filename, search common directories for it."""
-    if os.path.isfile(path):
-        return path
+    p = Path(path)
+    if p.is_file():
+        return str(p)
     # Check if it's just a basename (no directory separator)
     if "/" not in path and "\\" not in path:
-        home = os.path.expanduser("~")
+        home = Path.home()
         candidates = [
-            os.path.join(home, "Downloads", path),
-            os.path.join(home, "Desktop", path),
-            os.path.join(os.getcwd(), path),
+            home / "Downloads" / path,
+            home / "Desktop" / path,
+            Path.cwd() / path,
         ]
         for c in candidates:
-            if os.path.isfile(c):
-                return c
+            if c.is_file():
+                return str(c)
     return None
 
 
@@ -139,7 +142,7 @@ def _run_conversion(request_id: str, params: dict):
         )
         _latest_events[request_id] = {"type": "complete", "data": {}}
         queue.put(("complete", {}))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _latest_events[request_id] = {"type": "error", "data": {"error": str(exc)}}
         queue.put(("error", {"error": str(exc)}))
 
@@ -170,15 +173,14 @@ def handle_inspect():
         info["resolved_path"] = resolved
         # Ensure JSON-serializable types
         return jsonify(info)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 400
 
 
 @app.route("/convert", methods=["POST"])
 def handle_convert():
-    global _active_conversion
-    if _active_conversion:
-        return jsonify({"error": "A conversion is already running. Please wait for it to complete."}), 409
+    if _state["active"]:
+        return jsonify({"error": "A conversion is already running."}), 409
 
     body = request.get_json(force=True)
     input_path = body.get("input_path", "").strip()
@@ -206,11 +208,12 @@ def handle_convert():
     # Auto-derive output path if not provided
     output_path = body.get("output_path", "").strip()
     if not output_path:
-        base, _ = os.path.splitext(input_path)
-        output_path = base + ".ome.tiff"
+        base = Path(input_path).with_suffix("")
+        output_path = str(base) + ".ome.tiff"
 
     # Validate output directory is writable
-    output_dir = os.path.dirname(output_path) or "."
+    out_path_obj = Path(output_path)
+    output_dir = out_path_obj.parent if out_path_obj.parent.name else Path.cwd()
     if not os.access(output_dir, os.W_OK):
         return jsonify({"error": f"Output directory is not writable: {output_dir}"}), 400
 
@@ -220,20 +223,32 @@ def handle_convert():
         try:
             tile_size_val = int(tile_size)
             if tile_size_val <= 0:
-                raise ValueError
+                raise ValueError("Must be positive")
         except (ValueError, TypeError):
             return jsonify({"error": "tile_size must be a positive integer"}), 400
+
+    # Validate integer params
+    for param_name in ("num_levels", "downsample_factor"):
+        val = body.get(param_name)
+        if val is not None:
+            try:
+                val_int = int(val)
+                if val_int <= 0:
+                    raise ValueError("Must be positive")
+            except (ValueError, TypeError):
+                return jsonify({"error": f"{param_name} must be a positive integer"}), 400
 
     request_id = str(uuid.uuid4())
     queue: Queue = Queue()
     _progress_queues[request_id] = queue
-    _active_conversion = True
+    _state["active"] = True
 
     params = {
         "input_path": input_path,
         "output_path": output_path,
     }
-    for key in ("tile_size", "compression", "num_levels", "downsample_factor", "edge_mode"):
+    config_keys = ("tile_size", "compression", "num_levels", "downsample_factor", "edge_mode")
+    for key in config_keys:
         val = body.get(key)
         if val is not None:
             params[key] = val
@@ -281,8 +296,7 @@ def stream_progress(request_id: str):
                     yield f"event: error\ndata: {json.dumps(data)}\n\n"
                     break
         finally:
-            global _active_conversion
-            _active_conversion = False
+            _state["active"] = False
             _progress_queues.pop(request_id, None)
             _latest_events.pop(request_id, None)
 
@@ -301,16 +315,19 @@ def stream_progress(request_id: str):
 def handle_open_folder():
     body = request.get_json(force=True)
     folder_path = body.get("path", "").strip()
-    if not folder_path or not os.path.isdir(folder_path):
+    if not folder_path or not Path(folder_path).is_dir():
         return jsonify({"error": "Invalid folder path"}), 400
 
-    # macOS
-    if sys.platform == "darwin":
-        os.system(f'open "{folder_path}"')
-    elif sys.platform == "win32":
-        os.system(f'explorer "{folder_path}"')
-    else:
-        os.system(f'xdg-open "{folder_path}"')
+    # Securely open folder without shell execution
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", folder_path], check=False)
+        elif sys.platform == "win32":
+            subprocess.run(["explorer", folder_path], check=False)
+        else:
+            subprocess.run(["xdg-open", folder_path], check=False)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Failed to open folder: {exc}"}), 500
 
     return jsonify({"status": "ok"})
 
