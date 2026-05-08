@@ -1,0 +1,293 @@
+"""
+Tile reader for Aperio SVS files with compression 33007 (YUYV).
+
+Reads 256x256 YUYV-encoded tiles from an SVS file and can either yield them
+incrementally or reassemble the full-resolution RGB image in memory. Handles
+edge tiles that may be smaller than 256x256 due to image dimensions not being
+multiples of the tile size.
+"""
+
+import math
+import re
+import time
+from typing import Any, Iterator, Optional
+
+import numpy as np
+import tifffile
+
+from svs_to_ometiff.yuyv_decoder import yuyv_to_rgb
+
+
+def read_svs_metadata(svs_path: str) -> dict[str, Any]:
+    """
+    Read first-page geometry and Aperio metadata without decoding image tiles.
+
+    Args:
+        svs_path: Path to the Aperio SVS file.
+
+    Returns:
+        Metadata dict with image dimensions, source tile geometry, tile count,
+        MPP, and compression tag value.
+
+    Raises:
+        ValueError: If required SVS metadata is missing or inconsistent.
+        tifffile.TiffFileError: If the file cannot be parsed as TIFF.
+    """
+    with tifffile.TiffFile(svs_path) as tif:
+        page0 = tif.pages[0]
+        img_h, img_w = page0.shape[:2]
+        src_tile_h = page0.tilelength
+        src_tile_w = page0.tilewidth
+
+        if src_tile_h is None or src_tile_w is None:
+            raise ValueError("Input SVS must be tiled; page 0 is not tiled")
+
+        offsets = list(page0.dataoffsets)
+        bytecounts = list(page0.databytecounts)
+        try:
+            desc = page0.tags["ImageDescription"].value
+        except KeyError as exc:
+            raise ValueError("Input SVS is missing ImageDescription metadata") from exc
+        mpp = parse_mpp_from_description(desc)
+        magnification = parse_appmag_from_description(desc)
+        try:
+            compression = int(page0.tags["Compression"].value)
+        except KeyError as exc:
+            raise ValueError("Input SVS is missing Compression tag") from exc
+
+    n_tiles_x = math.ceil(img_w / src_tile_w)
+    n_tiles_y = math.ceil(img_h / src_tile_h)
+    total_tiles = n_tiles_x * n_tiles_y
+
+    if len(offsets) != total_tiles:
+        raise ValueError(
+            f"Tile count mismatch: expected {total_tiles} from grid "
+            f"({n_tiles_x}x{n_tiles_y}), got {len(offsets)} from file"
+        )
+    if len(bytecounts) != total_tiles:
+        raise ValueError(
+            f"Tile byte-count mismatch: expected {total_tiles} from grid "
+            f"({n_tiles_x}x{n_tiles_y}), got {len(bytecounts)} from file"
+        )
+
+    return {
+        "mpp": mpp,
+        "magnification": magnification,
+        "width": img_w,
+        "height": img_h,
+        "src_tile_width": src_tile_w,
+        "src_tile_height": src_tile_h,
+        "tile_count": total_tiles,
+        "n_tiles_x": n_tiles_x,
+        "n_tiles_y": n_tiles_y,
+        "compression": compression,
+        "bytecounts": bytecounts,
+    }
+
+
+def parse_mpp_from_description(description: str) -> float:
+    """
+    Extract microns-per-pixel (MPP) from an Aperio ImageDescription string.
+
+    The description contains pipe-delimited fields including:
+        MPP = 0.275310798315331
+
+    Args:
+        description: The ImageDescription tag value from the SVS.
+
+    Returns:
+        MPP value as a float.
+
+    Raises:
+        ValueError: If MPP cannot be parsed from the description.
+    """
+    match = re.search(r"(?i)(?P<snippet>\bmpp\s*=\s*(?P<value>[^|]+))", description)
+    if match is None:
+        raise ValueError("MPP not found in ImageDescription tag")
+
+    snippet = match.group("snippet").strip()
+    value_text = match.group("value").strip()
+
+    try:
+        mpp = float(value_text)
+    except ValueError as exc:
+        raise ValueError(
+            f"Could not parse numeric MPP value from description snippet: {snippet}"
+        ) from exc
+
+    if mpp <= 0:
+        raise ValueError(f"MPP must be positive, got {mpp}")
+    return mpp
+
+
+def parse_appmag_from_description(description: str) -> Optional[float]:
+    """
+    Extract objective magnification (AppMag) from an Aperio ImageDescription string.
+
+    The description may contain a pipe-delimited field like:
+        AppMag = 40
+
+    Args:
+        description: The ImageDescription tag value from the SVS.
+
+    Returns:
+        Magnification as a float, or ``None`` if not found.
+    """
+    match = re.search(r"(?i)\bAppMag\s*=\s*(?P<value>[^|]+)", description)
+    if match is None:
+        return None
+
+    value_text = match.group("value").strip()
+    try:
+        mag = float(value_text)
+    except ValueError:
+        return None
+
+    return mag if mag > 0 else None
+
+
+def _decode_tile_payload(
+    raw: bytes,
+    *,
+    full_tile_width: int,
+    full_tile_height: int,
+    visible_width: int,
+    visible_height: int,
+) -> np.ndarray:
+    """Decode either full padded tile payloads or cropped edge tile payloads."""
+    full_size_bytes = full_tile_width * full_tile_height * 2
+    if len(raw) == full_size_bytes:
+        return yuyv_to_rgb(raw, full_tile_width, full_tile_height)
+
+    cropped_size_bytes = visible_width * visible_height * 2
+    if len(raw) == cropped_size_bytes:
+        return yuyv_to_rgb(raw, visible_width, visible_height)
+
+    raise ValueError(
+        "Unexpected YUYV tile byte count: "
+        f"got {len(raw)}, expected {full_size_bytes} for full "
+        f"{full_tile_width}x{full_tile_height} tile"
+        f" or {cropped_size_bytes} for visible {visible_width}x{visible_height} tile"
+    )
+
+
+def iter_svs_rgb_tiles(
+    svs_path: str,
+    *,
+    progress_interval: int = 20,
+) -> Iterator[dict[str, Any]]:
+    """
+    Yield decoded RGB source tiles with their placement coordinates.
+
+    This is the low-memory primitive used by the streaming conversion path.
+    It decodes one source tile at a time instead of assembling the full image
+    in RAM. Edge tiles are yielded at their decoded payload size and include
+    ``x0``, ``y0``, ``x1``, and ``y1`` bounds for placement/cropping.
+    """
+    t_start = time.time()
+    metadata = read_svs_metadata(svs_path)
+    img_w = metadata["width"]
+    img_h = metadata["height"]
+    src_tile_w = metadata["src_tile_width"]
+    src_tile_h = metadata["src_tile_height"]
+    n_tiles_x = metadata["n_tiles_x"]
+    n_tiles_y = metadata["n_tiles_y"]
+
+    with tifffile.TiffFile(svs_path) as tif:
+        page0 = tif.pages[0]
+        offsets = list(page0.dataoffsets)
+        bytecounts = list(page0.databytecounts)
+        fh = tif.filehandle
+
+        for ty in range(n_tiles_y):
+            if progress_interval > 0 and ty % progress_interval == 0:
+                elapsed = time.time() - t_start
+                pct = 100 * ty / n_tiles_y
+                print(
+                    f"  Row {ty}/{n_tiles_y} ({pct:.0f}%) - {elapsed:.0f}s elapsed"
+                )
+
+            y0 = ty * src_tile_h
+            y1 = min(y0 + src_tile_h, img_h)
+
+            for tx in range(n_tiles_x):
+                x0 = tx * src_tile_w
+                x1 = min(x0 + src_tile_w, img_w)
+                idx = ty * n_tiles_x + tx
+
+                fh.seek(offsets[idx])
+                raw = fh.read(bytecounts[idx])
+                tile_rgb = _decode_tile_payload(
+                    raw,
+                    full_tile_width=src_tile_w,
+                    full_tile_height=src_tile_h,
+                    visible_width=x1 - x0,
+                    visible_height=y1 - y0,
+                )
+
+                yield {
+                    "tile": tile_rgb,
+                    "x0": x0,
+                    "y0": y0,
+                    "x1": x1,
+                    "y1": y1,
+                    "tile_x": tx,
+                    "tile_y": ty,
+                }
+
+    if progress_interval > 0:
+        elapsed = time.time() - t_start
+        print(f"Tiles decoded in {elapsed:.0f}s")
+
+
+def read_svs_full_image(
+    svs_path: str,
+    *,
+    progress_interval: int = 20,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """
+    Read all tiles from an SVS file and assemble the full-resolution RGB image.
+
+    Decodes every tile using the YUYV decoder and places it at the correct
+    position in the output image. Edge tiles are cropped to fit within the
+    actual image dimensions.
+
+    IMPORTANT: The full-resolution image can be large (e.g., ~4.5 GB for a
+    39,599×39,858 image). Prefer ``iter_svs_rgb_tiles`` for low-memory paths.
+
+    Args:
+        svs_path: Path to the Aperio SVS file.
+        progress_interval: Print progress every N tile rows (0 to suppress).
+
+    Returns:
+        Tuple of (full_image, metadata) where:
+          - full_image: uint8 numpy array of shape (height, width, 3).
+          - metadata: dict with keys 'mpp', 'width', 'height',
+            'src_tile_width', 'src_tile_height', 'tile_count',
+            'n_tiles_x', 'n_tiles_y'.
+
+    Raises:
+        ValueError: If the file is not a valid SVS or has unexpected structure.
+        IOError: If the file cannot be read.
+    """
+    metadata = read_svs_metadata(svs_path)
+    img_w = metadata["width"]
+    img_h = metadata["height"]
+
+    full_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)
+
+    t_start = time.time()
+    for item in iter_svs_rgb_tiles(svs_path, progress_interval=progress_interval):
+        y0 = item["y0"]
+        y1 = item["y1"]
+        x0 = item["x0"]
+        x1 = item["x1"]
+        tile_rgb = item["tile"]
+        full_img[y0:y1, x0:x1] = tile_rgb[: y1 - y0, : x1 - x0]
+
+    if progress_interval > 0:
+        elapsed = time.time() - t_start
+        print(f"Full image read in {elapsed:.0f}s")
+        print(f"Image shape: {full_img.shape}, dtype: {full_img.dtype}")
+
+    return full_img, metadata

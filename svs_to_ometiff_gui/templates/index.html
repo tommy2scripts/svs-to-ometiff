@@ -3,609 +3,444 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>svs-to-ometiff GUI</title>
+<title>svs-to-ometiff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f1219; --bg2: #161b26; --bg3: #1e2433;
+  --glass: rgba(255,255,255,0.03); --glass-border: rgba(255,255,255,0.07);
+  --text: #e2e8f0; --text-dim: #64748b; --text-muted: #475569;
+  --accent: #38bdf8; --accent-glow: rgba(56,189,248,0.15);
+  --green: #22c55e; --green-dim: rgba(34,197,94,0.12);
+  --red: #ef4444; --red-dim: rgba(239,68,68,0.12);
+  --yellow: #eab308; --yellow-dim: rgba(234,179,8,0.15);
+  --radius: 12px; --radius-sm: 8px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', monospace;
 }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  background: #0d1117;
-  color: #c9d1d9;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 2rem 1rem;
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  padding: 1.5rem 1rem;
+  background-image: radial-gradient(ellipse at 20% 0%, rgba(56,189,248,0.04) 0%, transparent 60%),
+                    radial-gradient(ellipse at 80% 100%, rgba(34,197,94,0.03) 0%, transparent 60%);
 }
-.container {
-  max-width: 700px;
-  width: 100%;
+/* Header */
+.header { max-width: 960px; width: 100%; margin-bottom: 1.25rem; display: flex; align-items: baseline; gap: 0.75rem; }
+.header h1 { font-size: 1.5rem; font-weight: 700; background: linear-gradient(135deg, var(--accent), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header .version { font-size: 0.75rem; color: var(--text-muted); font-family: var(--mono); }
+/* Warning */
+.warning-bar {
+  max-width: 960px; width: 100%; background: var(--yellow-dim); border: 1px solid rgba(234,179,8,0.25);
+  border-radius: var(--radius-sm); padding: 0.6rem 1rem; margin-bottom: 1.25rem;
+  font-size: 0.8rem; color: var(--yellow); display: flex; align-items: center; gap: 0.5rem;
 }
-h1 {
-  font-size: 1.8rem;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
+/* Layout */
+.layout { max-width: 960px; width: 100%; display: grid; grid-template-columns: 1fr 340px; gap: 1rem; }
+@media (max-width: 768px) { .layout { grid-template-columns: 1fr; } }
+/* Glass panel */
+.panel {
+  background: var(--glass); border: 1px solid var(--glass-border);
+  border-radius: var(--radius); padding: 1.25rem;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
-.subtitle {
-  font-size: 0.9rem;
-  color: #8b949e;
-  margin-bottom: 1.5rem;
-}
-.warning {
-  background: #3d2e00;
-  border: 1px solid #d29922;
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1.5rem;
-  font-size: 0.85rem;
-  color: #e3b341;
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-.warning-icon {
-  flex-shrink: 0;
-  font-size: 1.1rem;
-  line-height: 1.4;
-}
+.panel-title { font-size: 0.85rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+/* Dropzone */
 .dropzone {
-  border: 2px dashed #30363d;
-  border-radius: 8px;
-  padding: 2rem 1rem;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  margin-bottom: 1rem;
+  border: 2px dashed var(--glass-border); border-radius: var(--radius);
+  padding: 2rem 1rem; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s; margin-bottom: 1rem;
 }
-.dropzone:hover {
-  border-color: #58a6ff;
-  background: rgba(88, 166, 255, 0.05);
+.dropzone:hover, .dropzone.drag-over { border-color: var(--accent); background: var(--accent-glow); }
+.dropzone svg { margin-bottom: 0.5rem; opacity: 0.5; }
+.dropzone-text { font-size: 0.85rem; color: var(--text-dim); }
+.dropzone-text strong { color: var(--text); }
+/* Inputs */
+.form-group { margin-bottom: 0.85rem; }
+.form-group label { display: block; font-size: 0.78rem; font-weight: 500; color: var(--text-dim); margin-bottom: 0.3rem; }
+input[type="text"], select {
+  width: 100%; padding: 0.5rem 0.7rem; background: var(--bg2); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm); color: var(--text); font-size: 0.85rem; font-family: var(--mono);
+  outline: none; transition: border-color 0.2s;
 }
-.dropzone.drag-over {
-  border-color: #58a6ff;
-  background: rgba(88, 166, 255, 0.1);
-}
-.dropzone-text {
-  font-size: 0.95rem;
-  color: #8b949e;
-}
-.dropzone-text strong {
-  color: #c9d1d9;
-}
-.form-group {
-  margin-bottom: 1rem;
-}
-label {
-  display: block;
-  font-size: 0.85rem;
-  font-weight: 500;
-  margin-bottom: 0.35rem;
-  color: #c9d1d9;
-}
-select {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  background: #21262d;
-  color: #c9d1d9;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  appearance: auto;
-}
-
-select:hover {
-  border-color: #58a6ff;
-}
-
-select:focus {
-  outline: none;
-  border-color: #58a6ff;
-  box-shadow: 0 0 0 2px rgba(88,166,255,0.3);
-}
-
-input[type="text"] {
-  width: 100%;
-  padding: 0.55rem 0.75rem;
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  color: #c9d1d9;
-  font-size: 0.9rem;
-  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
-  outline: none;
-  transition: border-color 0.2s;
-}
-input[type="text"]:focus {
-  border-color: #58a6ff;
-}
-.row {
-  display: flex;
-  gap: 1rem;
-}
-.row .form-group {
-  flex: 1;
-}
-.settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-  cursor: pointer;
-  user-select: none;
-}
-.settings-header h3 {
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: #8b949e;
-}
-.gear-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  color: #8b949e;
-  transition: color 0.2s, background 0.2s;
-  line-height: 1;
-}
-.gear-btn:hover {
-  color: #c9d1d9;
-  background: rgba(255,255,255,0.05);
-}
-.gear-btn svg {
-  display: block;
-}
-.settings-panel {
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  background: #161b22;
-}
-.settings-panel.hidden {
-  display: none;
-}
+input[type="text"]:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+select { font-family: var(--font); cursor: pointer; appearance: auto; }
+.row { display: flex; gap: 0.75rem; }
+.row .form-group { flex: 1; }
+.input-row { display: flex; gap: 0.5rem; }
+.input-row input { flex: 1; }
+/* Buttons */
 .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.6rem 1.25rem;
-  font-size: 0.9rem;
-  font-weight: 500;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
-  text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0.55rem 1rem; font-size: 0.85rem; font-weight: 500; font-family: var(--font);
+  border-radius: var(--radius-sm); border: 1px solid transparent; cursor: pointer;
+  transition: all 0.2s; text-decoration: none;
 }
-.btn-primary {
-  background: #238636;
-  border-color: rgb(46, 164, 79);
-  color: #fff;
-  width: 100%;
+.btn-primary { background: var(--green); border-color: var(--green); color: #fff; width: 100%; font-size: 0.9rem; }
+.btn-primary:hover { background: #16a34a; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(34,197,94,0.25); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-secondary { background: var(--bg3); border-color: var(--glass-border); color: var(--text); }
+.btn-secondary:hover { background: var(--bg2); border-color: var(--accent); }
+.btn-sm { padding: 0.35rem 0.7rem; font-size: 0.78rem; }
+/* Settings toggle */
+.settings-toggle {
+  display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  user-select: none; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--text-dim);
 }
-.btn-primary:hover {
-  background: #2ea043;
+.settings-toggle:hover { color: var(--text); }
+.settings-toggle .arrow { transition: transform 0.2s; font-size: 0.7rem; }
+.settings-toggle .arrow.open { transform: rotate(90deg); }
+.settings-body { display: none; margin-bottom: 0.85rem; }
+.settings-body.open { display: block; }
+/* Slide info card */
+.slide-info { display: none; margin-bottom: 1rem; animation: fadeIn 0.3s ease; }
+.slide-info.visible { display: block; }
+.slide-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; }
+.slide-info-item { display: flex; justify-content: space-between; }
+.slide-info-item .label { font-size: 0.78rem; color: var(--text-dim); }
+.slide-info-item .value { font-size: 0.78rem; font-family: var(--mono); color: var(--text); font-weight: 500; }
+.slide-info .badge {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 99px; font-weight: 500;
 }
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.badge-ok { background: var(--green-dim); color: var(--green); }
+.badge-warn { background: var(--red-dim); color: var(--red); }
+/* Progress ring */
+.progress-ring-container { display: flex; flex-direction: column; align-items: center; padding: 1rem 0; }
+.progress-ring { position: relative; width: 120px; height: 120px; }
+.progress-ring svg { transform: rotate(-90deg); }
+.progress-ring .track { fill: none; stroke: var(--bg3); stroke-width: 8; }
+.progress-ring .fill { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.4s ease; }
+.progress-ring .pct {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; font-weight: 700; font-family: var(--mono); color: var(--text);
 }
-.btn-secondary {
-  background: #21262d;
-  border-color: #30363d;
-  color: #c9d1d9;
+.progress-msg { font-size: 0.78rem; color: var(--text-dim); text-align: center; margin-top: 0.5rem; max-width: 280px; word-break: break-word; }
+/* Log console */
+.log-console {
+  background: var(--bg); border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+  padding: 0.6rem; font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim);
+  height: 160px; overflow-y: auto; line-height: 1.6;
 }
-.btn-secondary:hover {
-  background: #30363d;
+.log-console .log-line { white-space: pre-wrap; }
+.log-console .log-line.fresh { color: var(--accent); }
+/* Completion / Error boxes */
+.result-box {
+  margin-top: 0.75rem; padding: 0.65rem 0.85rem; border-radius: var(--radius-sm);
+  display: none; align-items: center; justify-content: space-between; font-size: 0.85rem;
+  animation: fadeIn 0.3s ease;
 }
-.btn-group {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-}
-.progress-section {
-  margin-top: 1rem;
-}
-.progress-status {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-.spinner {
-  flex-shrink: 0;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-.progress-text {
-  font-size: 0.9rem;
-  color: #c9d1d9;
-}
-.progress-bar-track {
-  width: 100%;
-  height: 8px;
-  background: #21262d;
-  border-radius: 4px;
-  overflow: hidden;
-}
-.progress-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #238636, #2ea043);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-.completion-box {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid rgba(46, 160, 67, 0.4);
-  background: rgba(35, 134, 54, 0.1);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.completion-box .done-text {
-  color: #3fb950;
-  font-weight: 500;
-}
-.error-box {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid #f85149;
-  background: rgba(248, 81, 73, 0.1);
-  border-radius: 6px;
-  color: #f85149;
-  font-size: 0.9rem;
-}
-.hidden {
-  display: none !important;
-}
+.result-box.visible { display: flex; }
+.result-ok { background: var(--green-dim); border: 1px solid rgba(34,197,94,0.3); color: var(--green); }
+.result-err { background: var(--red-dim); border: 1px solid rgba(239,68,68,0.3); color: var(--red); flex-direction: column; align-items: flex-start; gap: 0.3rem; }
+/* Idle state */
+.idle-placeholder { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.82rem; }
+.hidden { display: none !important; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>svs-to-ometiff GUI</h1>
-  <p class="subtitle">Convert SVS slide images to OME-TIFF format</p>
 
-  <div class="warning">
-    <span class="warning-icon">&#9888;&#65039;</span>
-    <span><strong>Experimental:</strong> This GUI is experimental and not yet thoroughly tested. Use with caution on production data. Always verify outputs.</span>
-  </div>
+<div class="header">
+  <h1>svs-to-ometiff</h1>
+  <span class="version">v0.2.0 — GUI</span>
+</div>
 
-    <div class="dropzone" id="dropzone">
-      <div class="dropzone-text">
-        Drag an <strong>.svs</strong> file here to copy its name, then paste the full path from Finder:<br>
-        <span style="font-size:0.85rem;color:#8b949e;">Right‑click &rarr; hold Option &rarr; Copy &ldquo;...&rdquo; as Pathname &rarr; paste above</span>
+<div class="warning-bar">
+  <span>⚠️</span>
+  <span><strong>Experimental</strong> — not yet thoroughly tested. Always verify outputs independently.</span>
+</div>
+
+<div class="layout">
+  <!-- LEFT COLUMN -->
+  <div class="left-col">
+    <div class="panel">
+      <div class="dropzone" id="dropzone">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="dropzone-text">Drop <strong>.svs</strong> file here or click to browse</div>
       </div>
-    </div>
+      <input type="file" id="fileInput" accept=".svs" style="display:none">
 
-  <input type="file" id="fileInput" accept=".svs" style="display:none">
-
-  <div class="form-group">
-    <label for="inputPath">Input SVS Path</label>
-    <div style="display:flex;gap:0.5rem;">
-      <input type="text" id="inputPath" placeholder="/path/to/file.svs" autocomplete="off" style="flex:1;">
-      <button class="btn btn-secondary" id="browseBtn" style="white-space:nowrap;flex-shrink:0;">Browse...</button>
-    </div>
-    <div id="pathHint" class="hidden" style="margin-top:0.35rem;font-size:0.8rem;color:#8b949e;">
-      Copied filename &mdash; paste the full path above.
-    </div>
-  </div>
-
-  <div class="form-group">
-    <label for="outputPath">Output Path</label>
-    <input type="text" id="outputPath" placeholder="Auto-derived" autocomplete="off">
-  </div>
-
-  <div class="settings-header" id="settingsToggle">
-    <h3>Advanced Settings</h3>
-    <button class="gear-btn" aria-label="Toggle settings">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-      </svg>
-    </button>
-  </div>
-
-  <div class="settings-panel hidden" id="settingsPanel">
-    <div class="row">
       <div class="form-group">
-        <label for="tileSize">Tile Size</label>
-        <select id="tileSize">
-          <option value="256">256</option>
-          <option value="512" selected>512</option>
-          <option value="1024">1024</option>
-        </select>
+        <label for="inputPath">Input SVS Path</label>
+        <div class="input-row">
+          <input type="text" id="inputPath" placeholder="/path/to/slide.svs" autocomplete="off">
+          <button class="btn btn-secondary btn-sm" id="browseBtn">Browse</button>
+        </div>
       </div>
+      <div id="pathHint" class="hidden" style="margin:-0.5rem 0 0.5rem;font-size:0.72rem;color:var(--text-muted);">
+        Copied filename — paste the full path above (Finder → Right-click → Option → Copy as Pathname).
+      </div>
+
+      <!-- Slide Info Card -->
+      <div class="panel slide-info" id="slideInfo" style="background:var(--bg2);border-color:var(--glass-border);">
+        <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;">
+          Slide Info <span class="badge" id="convertibleBadge"></span>
+        </div>
+        <div class="slide-info-grid" id="slideInfoGrid"></div>
+      </div>
+
       <div class="form-group">
-        <label for="compression">Compression</label>
-        <select id="compression">
-          <option value="lzw" selected>lzw (lossless)</option>
-          <option value="zlib">zlib</option>
-          <option value="deflate">deflate</option>
-          <option value="none">none (uncompressed)</option>
-        </select>
+        <label for="outputPath">Output Path</label>
+        <input type="text" id="outputPath" placeholder="Auto-derived from input" autocomplete="off">
       </div>
-    </div>
-    <div class="row">
-      <div class="form-group">
-        <label for="numLevels">Pyramid Levels</label>
-        <select id="numLevels">
-          <option value="1">1 (no pyramid)</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-          <option value="6" selected>6</option>
-          <option value="7">7</option>
-          <option value="8">8</option>
-        </select>
+
+      <!-- Settings -->
+      <div class="settings-toggle" id="settingsToggle">
+        <span class="arrow" id="settingsArrow">▶</span> Advanced Settings
       </div>
-      <div class="form-group">
-        <label for="downsampleFactor">Downsample</label>
-        <select id="downsampleFactor">
-          <option value="2" selected>2×</option>
-          <option value="3">3×</option>
-          <option value="4">4×</option>
-        </select>
+      <div class="settings-body" id="settingsBody">
+        <div class="row">
+          <div class="form-group">
+            <label for="tileSize">Tile Size</label>
+            <select id="tileSize"><option value="256">256</option><option value="512" selected>512</option><option value="1024">1024</option></select>
+          </div>
+          <div class="form-group">
+            <label for="compression">Compression</label>
+            <select id="compression"><option value="lzw" selected>lzw</option><option value="zlib">zlib</option><option value="deflate">deflate</option><option value="none">none</option></select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label for="numLevels">Pyramid Levels</label>
+            <select id="numLevels"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option><option value="7">7</option><option value="8">8</option></select>
+          </div>
+          <div class="form-group">
+            <label for="downsampleFactor">Downsample</label>
+            <select id="downsampleFactor"><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="edgeMode">Edge Mode</label>
+          <select id="edgeMode"><option value="crop" selected>crop</option><option value="pad">pad</option></select>
+        </div>
       </div>
+
+      <button class="btn btn-primary" id="convertBtn" disabled>Convert</button>
     </div>
   </div>
 
-  <button class="btn btn-primary" id="convertBtn" disabled>Convert</button>
-
-  <div class="progress-section hidden" id="progressSection">
-    <div class="progress-status">
-      <svg class="spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2">
-        <circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round" opacity="0.3"/>
-        <circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-dashoffset="10" stroke-linecap="round"/>
-      </svg>
-      <span class="progress-text" id="progressText">Starting conversion...</span>
+  <!-- RIGHT COLUMN -->
+  <div class="right-col">
+    <!-- Progress Panel -->
+    <div class="panel" id="progressPanel">
+      <div class="panel-title">Progress</div>
+      <div id="idlePlaceholder" class="idle-placeholder">No conversion running</div>
+      <div id="progressContent" class="hidden">
+        <div class="progress-ring-container">
+          <div class="progress-ring">
+            <svg width="120" height="120" viewBox="0 0 120 120">
+              <circle class="track" cx="60" cy="60" r="52"/>
+              <circle class="fill" id="progressRingFill" cx="60" cy="60" r="52" stroke-dasharray="326.73" stroke-dashoffset="326.73"/>
+            </svg>
+            <div class="pct" id="progressPct">0%</div>
+          </div>
+          <div class="progress-msg" id="progressMsg">Starting...</div>
+        </div>
+      </div>
+      <div class="result-box result-ok" id="completionBox">
+        <span>✓ Conversion complete</span>
+        <button class="btn btn-secondary btn-sm" id="openFolderBtn">Open Folder</button>
+      </div>
+      <div class="result-box result-err" id="errorBox"></div>
     </div>
-    <div class="progress-bar-track">
-      <div class="progress-bar-fill" id="progressBarFill"></div>
+
+    <!-- Log Console -->
+    <div class="panel" style="margin-top:1rem;">
+      <div class="panel-title">Log</div>
+      <div class="log-console" id="logConsole">
+        <div class="log-line" style="color:var(--text-muted);">Waiting for conversion...</div>
+      </div>
     </div>
   </div>
-
-  <div class="completion-box hidden" id="completionBox">
-    <span class="done-text">&#10003; Done!</span>
-    <button class="btn btn-secondary" id="openFolderBtn">Open Output Folder</button>
-  </div>
-
-  <div class="error-box hidden" id="errorBox"></div>
 </div>
 
 <script>
 (function() {
   'use strict';
+  const $ = id => document.getElementById(id);
+  const dropzone = $('dropzone'), fileInput = $('fileInput'), inputPath = $('inputPath');
+  const outputPath = $('outputPath'), convertBtn = $('convertBtn');
+  const settingsToggle = $('settingsToggle'), settingsBody = $('settingsBody'), settingsArrow = $('settingsArrow');
+  const progressPanel = $('progressPanel'), progressContent = $('progressContent');
+  const idlePlaceholder = $('idlePlaceholder'), progressRingFill = $('progressRingFill');
+  const progressPct = $('progressPct'), progressMsg = $('progressMsg');
+  const completionBox = $('completionBox'), errorBox = $('errorBox');
+  const openFolderBtn = $('openFolderBtn'), logConsole = $('logConsole');
+  const slideInfo = $('slideInfo'), slideInfoGrid = $('slideInfoGrid');
+  const convertibleBadge = $('convertibleBadge');
+  const CIRC = 2 * Math.PI * 52; // stroke-dasharray
+  let currentRequestId = null, inspectTimer = null;
 
-  const dropzone = document.getElementById('dropzone');
-  const fileInput = document.getElementById('fileInput');
-  const inputPath = document.getElementById('inputPath');
-  const outputPath = document.getElementById('outputPath');
-  const convertBtn = document.getElementById('convertBtn');
-  const settingsToggle = document.getElementById('settingsToggle');
-  const settingsPanel = document.getElementById('settingsPanel');
-  const progressSection = document.getElementById('progressSection');
-  const progressText = document.getElementById('progressText');
-  const progressBarFill = document.getElementById('progressBarFill');
-  const completionBox = document.getElementById('completionBox');
-  const errorBox = document.getElementById('errorBox');
-  const openFolderBtn = document.getElementById('openFolderBtn');
-  const browseBtn = document.getElementById('browseBtn');
-
-  let currentRequestId = null;
-
-  function deriveOutputPath(inp) {
-    if (!inp || !inp.trim()) return '';
-    const p = inp.trim();
+  function deriveOutput(p) {
+    if (!p) return '';
     const dot = p.lastIndexOf('.');
-    const base = dot > p.lastIndexOf('/') && dot > p.lastIndexOf('\\') ? p.substring(0, dot) : p;
+    const base = (dot > p.lastIndexOf('/') && dot > p.lastIndexOf('\\')) ? p.substring(0, dot) : p;
     return base + '.ome.tiff';
   }
 
-  function updateOutputPath() {
-    const inp = inputPath.value.trim();
-    if (inp) {
-      outputPath.value = deriveOutputPath(inp);
-    } else {
-      outputPath.value = '';
-    }
-    convertBtn.disabled = !inp;
+  function updateOutput() {
+    const v = inputPath.value.trim();
+    if (v) outputPath.value = deriveOutput(v);
+    else outputPath.value = '';
+    convertBtn.disabled = !v;
   }
 
-  inputPath.addEventListener('input', updateOutputPath);
-
-  // Show a hint when only a bare filename was placed (browse or drag-drop)
-  function showFilePathHint(name) {
-    const hint = document.getElementById('pathHint');
-    hint.textContent = 'Copied filename "' + name + '" — paste the full path above.';
-    hint.classList.remove('hidden');
+  // Inspect slide on path change (debounced)
+  function scheduleInspect() {
+    clearTimeout(inspectTimer);
+    const v = inputPath.value.trim();
+    if (!v) { slideInfo.classList.remove('visible'); return; }
+    inspectTimer = setTimeout(() => fetchInspect(v), 400);
   }
 
-  // Hide the hint as soon as the user starts typing the real path
-  inputPath.addEventListener('focus', function() {
-    document.getElementById('pathHint').classList.add('hidden');
+  function fetchInspect(path) {
+    fetch('/inspect?path=' + encodeURIComponent(path))
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { slideInfo.classList.remove('visible'); return; }
+        const mag = data.magnification;
+        const magStr = mag != null ? (mag === Math.floor(mag) ? mag + 'X' : mag + 'X') : '—';
+        const items = [
+          ['Dimensions', data.width + ' × ' + data.height],
+          ['MPP', data.mpp != null ? data.mpp + ' µm/px' : '—'],
+          ['Magnification', magStr],
+          ['Compression', String(data.compression)],
+          ['Tile Size', data.src_tile_width + ' × ' + data.src_tile_height],
+          ['Tile Count', String(data.tile_count)],
+        ];
+        slideInfoGrid.innerHTML = items.map(([l,v]) =>
+          '<div class="slide-info-item"><span class="label">'+l+'</span><span class="value">'+v+'</span></div>'
+        ).join('');
+        if (data.convertible) {
+          convertibleBadge.className = 'badge badge-ok';
+          convertibleBadge.textContent = '✓ Convertible';
+        } else {
+          convertibleBadge.className = 'badge badge-warn';
+          convertibleBadge.textContent = '✗ Not supported';
+        }
+        slideInfo.classList.add('visible');
+      })
+      .catch(() => slideInfo.classList.remove('visible'));
+  }
+
+  inputPath.addEventListener('input', () => { updateOutput(); scheduleInspect(); });
+  inputPath.addEventListener('focus', () => $('pathHint').classList.add('hidden'));
+
+  // Browse button
+  $('browseBtn').addEventListener('click', e => { e.preventDefault(); fileInput.click(); });
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    if (f) { inputPath.value = f.name; updateOutput(); scheduleInspect(); $('pathHint').classList.remove('hidden'); }
   });
 
-  // Browse button triggers file dialog
-  browseBtn.addEventListener('click', function(e) {
-    e.preventDefault();
-    fileInput.click();
+  // Drag & drop
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', e => { e.preventDefault(); dropzone.classList.remove('drag-over'); });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag-over');
+    const f = e.dataTransfer.files;
+    if (f && f.length) { inputPath.value = f[0].name; updateOutput(); scheduleInspect(); $('pathHint').classList.remove('hidden'); }
   });
-
-  fileInput.addEventListener('change', function() {
-    const file = fileInput.files[0];
-    if (file) {
-      inputPath.value = file.name;
-      updateOutputPath();
-      showFilePathHint(file.name);
-    }
-  });
-
-  // Drag over events
-  dropzone.addEventListener('dragover', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    dropzone.classList.add('drag-over');
-  });
-
-  dropzone.addEventListener('dragleave', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    dropzone.classList.remove('drag-over');
-  });
-
-  dropzone.addEventListener('drop', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    dropzone.classList.remove('drag-over');
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      inputPath.value = file.name;
-      updateOutputPath();
-      showFilePathHint(file.name);
-    }
-  });
+  dropzone.addEventListener('click', () => fileInput.click());
 
   // Settings toggle
-  settingsToggle.addEventListener('click', function() {
-    settingsPanel.classList.toggle('hidden');
+  settingsToggle.addEventListener('click', () => {
+    settingsBody.classList.toggle('open');
+    settingsArrow.classList.toggle('open');
   });
 
+  // Progress ring helper
+  function setProgress(pct) {
+    const clamped = Math.min(Math.max(pct, 0), 100);
+    const offset = CIRC - (clamped / 100) * CIRC;
+    progressRingFill.style.strokeDashoffset = offset;
+    progressPct.textContent = Math.round(clamped) + '%';
+  }
+
+  function addLog(msg) {
+    // Remove "Waiting" placeholder on first real message
+    if (logConsole.children.length === 1 && logConsole.children[0].textContent === 'Waiting for conversion...') {
+      logConsole.innerHTML = '';
+    }
+    const el = document.createElement('div');
+    el.className = 'log-line fresh';
+    el.textContent = '> ' + msg;
+    logConsole.appendChild(el);
+    logConsole.scrollTop = logConsole.scrollHeight;
+    // Remove fresh highlight after a moment
+    setTimeout(() => el.classList.remove('fresh'), 1500);
+  }
+
   // Convert
-  convertBtn.addEventListener('click', function() {
+  convertBtn.addEventListener('click', () => {
     const inp = inputPath.value.trim();
     if (!inp) return;
-
     const payload = {
       input_path: inp,
       output_path: outputPath.value.trim() || undefined,
-      tile_size: parseInt(document.getElementById('tileSize').value, 10) || undefined,
-      compression: document.getElementById('compression').value || undefined,
-      num_levels: parseInt(document.getElementById('numLevels').value, 10) || undefined,
-      downsample_factor: parseFloat(document.getElementById('downsampleFactor').value) || undefined
+      tile_size: parseInt($('tileSize').value, 10),
+      compression: $('compression').value,
+      num_levels: parseInt($('numLevels').value, 10),
+      downsample_factor: parseInt($('downsampleFactor').value, 10),
+      edge_mode: $('edgeMode').value,
     };
+    convertBtn.disabled = true; convertBtn.textContent = 'Converting…';
+    completionBox.classList.remove('visible'); errorBox.classList.remove('visible');
+    idlePlaceholder.classList.add('hidden'); progressContent.classList.remove('hidden');
+    setProgress(0); progressMsg.textContent = 'Starting conversion…';
+    logConsole.innerHTML = '';
 
-    convertBtn.disabled = true;
-    convertBtn.textContent = 'Converting...';
-    errorBox.classList.add('hidden');
-    completionBox.classList.add('hidden');
-    progressSection.classList.remove('hidden');
-    progressText.textContent = 'Starting conversion...';
-    progressBarFill.style.width = '0%';
-
-    fetch('/convert', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    .then(function(resp) {
-      if (!resp.ok) {
-        return resp.json().then(function(data) {
-          throw new Error(data.error || 'Conversion request failed');
-        });
-      }
-      return resp.json();
-    })
-    .then(function(data) {
-      currentRequestId = data.request_id;
-      listenProgress(currentRequestId);
-    })
-    .catch(function(err) {
-      progressSection.classList.add('hidden');
-      errorBox.textContent = err.message || 'Failed to start conversion';
-      errorBox.classList.remove('hidden');
-      convertBtn.textContent = 'Convert';
-      convertBtn.disabled = false;
-    });
+    fetch('/convert', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+      .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Request failed'); }); return r.json(); })
+      .then(data => { currentRequestId = data.request_id; listenProgress(data.request_id); })
+      .catch(err => {
+        progressContent.classList.add('hidden'); idlePlaceholder.classList.remove('hidden');
+        errorBox.textContent = err.message; errorBox.classList.add('visible');
+        convertBtn.textContent = 'Convert'; convertBtn.disabled = false;
+      });
   });
 
-  function listenProgress(requestId) {
-    var eventSource = new EventSource('/progress/' + encodeURIComponent(requestId));
-
-    eventSource.addEventListener('progress', function(e) {
-      var data;
+  function listenProgress(rid) {
+    const es = new EventSource('/progress/' + encodeURIComponent(rid));
+    es.addEventListener('progress', e => {
       try {
-        data = JSON.parse(e.data);
-      } catch(err) {
-        return;
-      }
-
-      if (data.message) {
-        progressText.textContent = data.message;
-      }
-      if (typeof data.percent === 'number') {
-        progressBarFill.style.width = Math.min(data.percent, 100) + '%';
-      }
+        const d = JSON.parse(e.data);
+        if (d.message) { progressMsg.textContent = d.message; addLog(d.message); }
+        if (typeof d.percent === 'number') setProgress(d.percent);
+      } catch(_) {}
     });
-
-    eventSource.addEventListener('complete', function(e) {
-      eventSource.close();
-      progressSection.classList.add('hidden');
-      completionBox.classList.remove('hidden');
-      convertBtn.textContent = 'Convert';
-      convertBtn.disabled = false;
+    es.addEventListener('complete', () => {
+      es.close(); setProgress(100);
+      progressContent.classList.add('hidden'); idlePlaceholder.classList.add('hidden');
+      completionBox.classList.add('visible');
+      addLog('✓ Conversion complete');
+      convertBtn.textContent = 'Convert'; convertBtn.disabled = false;
       currentRequestId = null;
     });
-
-    eventSource.addEventListener('error', function(e) {
-      var data;
-      try {
-        data = JSON.parse(e.data);
-      } catch(err) {
-        eventSource.close();
-        progressSection.classList.add('hidden');
-        errorBox.textContent = 'Connection lost or conversion failed';
-        errorBox.classList.remove('hidden');
-        convertBtn.textContent = 'Convert';
-        convertBtn.disabled = false;
-        currentRequestId = null;
-        return;
-      }
-
-      eventSource.close();
-      progressSection.classList.add('hidden');
-      errorBox.textContent = data.error || 'Conversion failed';
-      errorBox.classList.remove('hidden');
-      convertBtn.textContent = 'Convert';
-      convertBtn.disabled = false;
+    es.addEventListener('error', e => {
+      let msg = 'Connection lost or conversion failed';
+      try { const d = JSON.parse(e.data); msg = d.error || msg; } catch(_) {}
+      es.close();
+      progressContent.classList.add('hidden'); idlePlaceholder.classList.add('hidden');
+      errorBox.textContent = msg; errorBox.classList.add('visible');
+      addLog('✗ Error: ' + msg);
+      convertBtn.textContent = 'Convert'; convertBtn.disabled = false;
       currentRequestId = null;
     });
   }
 
-  // Open output folder
-  openFolderBtn.addEventListener('click', function() {
-    var out = outputPath.value.trim();
-    if (!out) return;
-    var dir = out.substring(0, out.lastIndexOf('/'));
-    if (!dir) dir = out.substring(0, out.lastIndexOf('\\'));
-    if (!dir) dir = '.';
-    // Reveal in Finder (macOS) or file manager
-    fetch('/open_folder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: dir })
-    }).catch(function(){});
+  // Open folder
+  openFolderBtn.addEventListener('click', () => {
+    const out = outputPath.value.trim(); if (!out) return;
+    let dir = out.substring(0, out.lastIndexOf('/')); if (!dir) dir = '.';
+    fetch('/open_folder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path:dir}) }).catch(()=>{});
   });
 
-  // Allow Enter key to trigger convert
-  inputPath.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !convertBtn.disabled) {
-      convertBtn.click();
-    }
-  });
-
+  // Enter key
+  inputPath.addEventListener('keydown', e => { if (e.key === 'Enter' && !convertBtn.disabled) convertBtn.click(); });
 })();
 </script>
 </body>

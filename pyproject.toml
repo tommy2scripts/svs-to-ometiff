@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "svs-to-ometiff-gui"
-version = "0.1.0"
+version = "0.2.0"
 description = "Flask GUI for converting SVS whole-slide images to OME-TIFF."
 readme = "README.md"
 requires-python = ">=3.9"

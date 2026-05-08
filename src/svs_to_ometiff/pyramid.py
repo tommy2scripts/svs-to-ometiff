@@ -1,0 +1,189 @@
+"""
+Pyramid builder for multi-resolution OME-TIFF generation.
+
+Creates multi-level image pyramids from full-resolution RGB images using
+block-averaging downsampling. The classic API returns in-memory arrays; the
+streaming conversion path uses disk-backed memmaps for lower peak RAM.
+"""
+
+import os
+import time
+from typing import Literal, Optional
+
+import numpy as np
+
+from svs_to_ometiff.utils import ProgressLogger, _log
+
+
+def build_pyramid(
+    full_image: np.ndarray,
+    num_levels: int = 6,
+    downsample_factor: int = 2,
+    edge_mode: Literal["crop", "pad"] = "crop",
+    *,
+    verbose: bool = True,
+    progress_logger: Optional[ProgressLogger] = None,
+) -> list[np.ndarray]:
+    """
+    Build a multi-resolution pyramid by iterative block averaging.
+
+    Each level is created by averaging non-overlapping blocks of
+    `downsample_factor × downsample_factor` pixels from the previous level.
+    Edge pixels are dropped if dimensions are not divisible by the factor.
+    """
+    if full_image.ndim != 3 or full_image.shape[2] != 3:
+        raise ValueError(f"full_image must have shape (H, W, 3), got {full_image.shape}")
+    if full_image.dtype != np.uint8:
+        raise ValueError(f"full_image must be uint8, got {full_image.dtype}")
+    if num_levels < 1:
+        raise ValueError(f"num_levels must be at least 1, got {num_levels}")
+    if downsample_factor < 2:
+        raise ValueError(
+            f"downsample_factor must be at least 2, got {downsample_factor}"
+        )
+    if edge_mode not in {"crop", "pad"}:
+        raise ValueError(f"edge_mode must be 'crop' or 'pad', got {edge_mode!r}")
+
+    h, w = full_image.shape[:2]
+    if num_levels > 1 and (h < downsample_factor or w < downsample_factor):
+        raise ValueError(
+            f"Image ({w}x{h}) too small for downsampling by {downsample_factor}"
+        )
+
+    t0 = time.time()
+
+    pyramid: list[np.ndarray] = [full_image]
+
+    for level in range(1, num_levels):
+        prev = pyramid[-1]
+        factor = downsample_factor
+
+        if edge_mode == "crop":
+            new_h = prev.shape[0] // factor
+            new_w = prev.shape[1] // factor
+        else:
+            new_h = (prev.shape[0] + factor - 1) // factor
+            new_w = (prev.shape[1] + factor - 1) // factor
+        if new_h < 1 or new_w < 1:
+            raise ValueError(
+                f"Cannot build level {level}: previous level "
+                f"{prev.shape[1]}x{prev.shape[0]} is too small for "
+                f"downsampling by {factor}"
+            )
+        crop_h = new_h * factor
+        crop_w = new_w * factor
+
+        if edge_mode == "crop":
+            cropped = prev[:crop_h, :crop_w]
+        else:
+            pad_h = crop_h - prev.shape[0]
+            pad_w = crop_w - prev.shape[1]
+            cropped = np.pad(prev, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
+        downsampled = (
+            cropped.reshape(new_h, factor, new_w, factor, 3)
+            .mean(axis=(1, 3))
+            .astype(np.uint8)
+        )
+
+        pyramid.append(downsampled)
+
+        _log(
+            verbose,
+            progress_logger,
+            f"  Level {level}: {downsampled.shape[1]} x {downsampled.shape[0]} px",
+        )
+
+    _log(verbose, progress_logger, f"Pyramid built in {time.time() - t0:.0f}s")
+
+    return pyramid
+
+
+def _next_level_shape(
+    height: int,
+    width: int,
+    factor: int,
+    edge_mode: Literal["crop", "pad"],
+) -> tuple[int, int]:
+    if edge_mode == "crop":
+        return height // factor, width // factor
+    return (height + factor - 1) // factor, (width + factor - 1) // factor
+
+
+def build_pyramid_memmaps(
+    base_level: np.ndarray,
+    temp_dir: str,
+    *,
+    num_levels: int = 6,
+    downsample_factor: int = 2,
+    edge_mode: Literal["crop", "pad"] = "crop",
+    verbose: bool = True,
+    progress_logger: Optional[ProgressLogger] = None,
+) -> list[np.ndarray]:
+    """
+    Build lower pyramid levels as disk-backed memmaps.
+
+    ``base_level`` is included as level 0 and is not copied. Each lower level is
+    generated row-by-row from the previous level, keeping only a small strip in
+    RAM instead of materializing the full pyramid as heap arrays.
+    """
+    if base_level.ndim != 3 or base_level.shape[2] != 3:
+        raise ValueError(f"base_level must have shape (H, W, 3), got {base_level.shape}")
+    if base_level.dtype != np.uint8:
+        raise ValueError(f"base_level must be uint8, got {base_level.dtype}")
+    if num_levels < 1:
+        raise ValueError(f"num_levels must be at least 1, got {num_levels}")
+    if downsample_factor < 2:
+        raise ValueError(
+            f"downsample_factor must be at least 2, got {downsample_factor}"
+        )
+    if edge_mode not in {"crop", "pad"}:
+        raise ValueError(f"edge_mode must be 'crop' or 'pad', got {edge_mode!r}")
+
+    os.makedirs(temp_dir, exist_ok=True)
+    levels: list[np.ndarray] = [base_level]
+    factor = downsample_factor
+    t0 = time.time()
+
+    for level_index in range(1, num_levels):
+        prev = levels[-1]
+        prev_h, prev_w = prev.shape[:2]
+        new_h, new_w = _next_level_shape(prev_h, prev_w, factor, edge_mode)
+        if new_h < 1 or new_w < 1:
+            raise ValueError(
+                f"Cannot build level {level_index}: previous level "
+                f"{prev_w}x{prev_h} is too small for downsampling by {factor}"
+            )
+
+        path = os.path.join(temp_dir, f"pyramid_level_{level_index}.dat")
+        dest = np.memmap(path, dtype=np.uint8, mode="w+", shape=(new_h, new_w, 3))
+        crop_w = new_w * factor
+
+        for y in range(new_h):
+            src_y0 = y * factor
+            src_y1 = min(src_y0 + factor, prev_h)
+            src_x1 = min(crop_w, prev_w)
+            strip = prev[src_y0:src_y1, :src_x1]
+
+            if edge_mode == "pad" and (
+                strip.shape[0] != factor or strip.shape[1] != crop_w
+            ):
+                pad_h = factor - strip.shape[0]
+                pad_w = crop_w - strip.shape[1]
+                strip = np.pad(strip, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
+
+            dest[y] = (
+                strip.reshape(factor, new_w, factor, 3)
+                .mean(axis=(0, 2))
+                .astype(np.uint8)
+            )
+
+        dest.flush()
+        levels.append(dest)
+        _log(
+            verbose,
+            progress_logger,
+            f"  Level {level_index}: {new_w} x {new_h} px",
+        )
+
+    _log(verbose, progress_logger, f"Pyramid built in {time.time() - t0:.0f}s")
+    return levels

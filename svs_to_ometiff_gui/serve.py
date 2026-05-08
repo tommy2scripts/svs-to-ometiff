@@ -9,6 +9,7 @@ Opens browser at http://127.0.0.1:8765
 """
 
 import os
+import re
 import sys
 import json
 import uuid
@@ -20,6 +21,7 @@ from typing import Optional
 from flask import Flask, request, jsonify, Response, render_template
 
 from svs_to_ometiff.converter import convert
+from svs_to_ometiff.inspect import inspect_svs
 
 app = Flask(__name__)
 
@@ -41,6 +43,50 @@ WARNING_BANNER = """
   ╚══════════════════════════════════════════════════════════════╝
 \033[0m
 """
+
+# ---------------------------------------------------------------------------
+# Progress estimation
+# ---------------------------------------------------------------------------
+# The converter emits text messages via progress_logger. We parse these to
+# estimate a percentage using a phased model:
+#   0 – 10 %   reading metadata / setup
+#  10 – 60 %   tile decoding  (track "Tile row X of Y")
+#  60 – 85 %   pyramid building
+#  85 – 98 %   writing OME-TIFF
+#  100 %       done
+
+_TILE_ROW_RE = re.compile(r"Tile row\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
+
+
+def _estimate_percent(message: str) -> Optional[float]:
+    """Parse a converter progress message and return an estimated percent."""
+    msg = message.strip()
+
+    # Tile row progress → 10-60%
+    m = _TILE_ROW_RE.search(msg)
+    if m:
+        current, total = int(m.group(1)), int(m.group(2))
+        if total > 0:
+            frac = current / total
+            return round(10 + frac * 50, 1)
+
+    low = msg.lower()
+    if "reading" in low or "metadata" in low or "opening" in low:
+        return 5.0
+    if "building" in low and "pyramid" in low:
+        return 62.0
+    if "level" in low and "memmap" in low:
+        return 70.0
+    if "pyramid built" in low:
+        return 82.0
+    if "writing" in low and "ome" in low.replace("-", ""):
+        return 86.0
+    if low.startswith("  level"):
+        return 92.0
+    if "done in" in low:
+        return 100.0
+
+    return None
 
 
 def _resolve_path(path: str) -> Optional[str]:
@@ -67,22 +113,28 @@ def _run_conversion(request_id: str, params: dict):
     if queue is None:
         return
 
-    def progress_callback(message: str, percent: float = None):
+    def progress_callback(message: str):
         """Callback passed to the converter to report progress."""
-        event = {"message": message}
+        percent = _estimate_percent(message)
+        event: dict = {"message": message}
         if percent is not None:
             event["percent"] = percent
         _latest_events[request_id] = {"type": "progress", "data": event}
         queue.put(("progress", event))
 
     try:
+        compression = params.get("compression", "lzw")
+        if compression == "none":
+            compression = None
+
         convert(
             input_svs=params["input_path"],
             output_ometiff=params.get("output_path"),
             tile_size=params.get("tile_size", 512),
-            compression=params.get("compression", "lzw"),
+            compression=compression,
             num_levels=params.get("num_levels", 6),
             downsample_factor=params.get("downsample_factor", 2),
+            edge_mode=params.get("edge_mode", "crop"),
             progress_logger=progress_callback,
         )
         _latest_events[request_id] = {"type": "complete", "data": {}}
@@ -92,9 +144,34 @@ def _run_conversion(request_id: str, params: dict):
         queue.put(("error", {"error": str(exc)}))
 
 
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/inspect")
+def handle_inspect():
+    """Return slide metadata without decoding any tiles."""
+    path = request.args.get("path", "").strip()
+    if not path:
+        return jsonify({"error": "path query parameter is required"}), 400
+
+    resolved = _resolve_path(path)
+    if resolved is None:
+        return jsonify({"error": f"File not found: {path}"}), 404
+
+    try:
+        info = inspect_svs(resolved)
+        # Add the resolved path so the frontend knows the real path
+        info["resolved_path"] = resolved
+        # Ensure JSON-serializable types
+        return jsonify(info)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 400
 
 
 @app.route("/convert", methods=["POST"])
@@ -156,7 +233,7 @@ def handle_convert():
         "input_path": input_path,
         "output_path": output_path,
     }
-    for key in ("tile_size", "compression", "num_levels", "downsample_factor"):
+    for key in ("tile_size", "compression", "num_levels", "downsample_factor", "edge_mode"):
         val = body.get(key)
         if val is not None:
             params[key] = val
