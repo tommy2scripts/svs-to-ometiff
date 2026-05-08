@@ -13,6 +13,7 @@ import sys
 import json
 import uuid
 import threading
+import subprocess
 import webbrowser
 from queue import Queue
 from typing import Optional
@@ -27,6 +28,8 @@ app = Flask(__name__)
 _progress_queues: dict[str, Queue] = {}
 _active_conversion = False
 _latest_events: dict[str, dict] = {}
+_conversion_lock = threading.Lock()
+_conversion_thread: Optional[threading.Thread] = None
 
 WARNING_BANNER = """
 \033[33m
@@ -99,9 +102,10 @@ def index():
 
 @app.route("/convert", methods=["POST"])
 def handle_convert():
-    global _active_conversion
-    if _active_conversion:
-        return jsonify({"error": "A conversion is already running. Please wait for it to complete."}), 409
+    global _active_conversion, _conversion_thread
+    with _conversion_lock:
+        if _active_conversion:
+            return jsonify({"error": "A conversion is already running. Please wait for it to complete."}), 409
 
     body = request.get_json(force=True)
     input_path = body.get("input_path", "").strip()
@@ -149,24 +153,27 @@ def handle_convert():
 
     request_id = str(uuid.uuid4())
     queue: Queue = Queue()
-    _progress_queues[request_id] = queue
-    _active_conversion = True
 
-    params = {
-        "input_path": input_path,
-        "output_path": output_path,
-    }
-    for key in ("tile_size", "compression", "num_levels", "downsample_factor"):
-        val = body.get(key)
-        if val is not None:
-            params[key] = val
+    with _conversion_lock:
+        _progress_queues[request_id] = queue
+        _active_conversion = True
 
-    thread = threading.Thread(
-        target=_run_conversion,
-        args=(request_id, params),
-        daemon=True,
-    )
-    thread.start()
+        params = {
+            "input_path": input_path,
+            "output_path": output_path,
+        }
+        for key in ("tile_size", "compression", "num_levels", "downsample_factor"):
+            val = body.get(key)
+            if val is not None:
+                params[key] = val
+
+        thread = threading.Thread(
+            target=_run_conversion,
+            args=(request_id, params),
+            daemon=True,
+        )
+        _conversion_thread = thread
+        thread.start()
 
     return jsonify({"request_id": request_id, "output_path": output_path})
 
@@ -204,10 +211,14 @@ def stream_progress(request_id: str):
                     yield f"event: error\ndata: {json.dumps(data)}\n\n"
                     break
         finally:
-            global _active_conversion
-            _active_conversion = False
-            _progress_queues.pop(request_id, None)
-            _latest_events.pop(request_id, None)
+            global _active_conversion, _conversion_thread
+            with _conversion_lock:
+                if _conversion_thread is not None:
+                    _conversion_thread.join(timeout=1.0)
+                    _conversion_thread = None
+                _progress_queues.pop(request_id, None)
+                _latest_events.pop(request_id, None)
+                _active_conversion = False
 
     return Response(
         generate(),
@@ -229,11 +240,11 @@ def handle_open_folder():
 
     # macOS
     if sys.platform == "darwin":
-        os.system(f'open "{folder_path}"')
+        subprocess.run(["open", folder_path])
     elif sys.platform == "win32":
-        os.system(f'explorer "{folder_path}"')
+        subprocess.run(["explorer", folder_path])
     else:
-        os.system(f'xdg-open "{folder_path}"')
+        subprocess.run(["xdg-open", folder_path])
 
     return jsonify({"status": "ok"})
 
