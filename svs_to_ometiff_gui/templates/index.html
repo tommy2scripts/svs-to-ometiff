@@ -167,7 +167,7 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
         <label for="inputPath">Input SVS Path</label>
         <div class="input-row">
           <input type="text" id="inputPath" placeholder="/path/to/slide.svs" autocomplete="off">
-          <button class="btn btn-secondary btn-sm" id="browseBtn">Browse</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="browseBtn">Browse</button>
         </div>
       </div>
       <div id="pathHint" class="hidden" style="margin:-0.5rem 0 0.5rem;font-size:0.72rem;color:var(--text-muted);">
@@ -218,7 +218,7 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
         </div>
       </div>
 
-      <button class="btn btn-primary" id="convertBtn" disabled>Convert</button>
+      <button type="button" class="btn btn-primary" id="convertBtn" disabled>Convert</button>
     </div>
   </div>
 
@@ -242,7 +242,7 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
       </div>
       <div class="result-box result-ok" id="completionBox">
         <span>✓ Conversion complete</span>
-        <button class="btn btn-secondary btn-sm" id="openFolderBtn">Open Folder</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="openFolderBtn">Open Folder</button>
       </div>
       <div class="result-box result-err" id="errorBox"></div>
     </div>
