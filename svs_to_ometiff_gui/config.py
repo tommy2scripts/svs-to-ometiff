@@ -16,8 +16,8 @@ class Config:
     PORT: int = int(os.environ.get("SVS_GUI_PORT", "8765"))
 
     # Conversion defaults
-    DEFAULT_TILE_SIZE: int = int(os.environ.get("SVS_GUI_TILE_SIZE", "512"))
-    DEFAULT_COMPRESSION: str = os.environ.get("SVS_GUI_COMPRESSION", "lzw")
+    DEFAULT_TILE_SIZE: int = int(os.environ.get("SVS_GUI_TILE_SIZE", "1024"))
+    DEFAULT_COMPRESSION: str = os.environ.get("SVS_GUI_COMPRESSION", "zlib")
     DEFAULT_NUM_LEVELS: int = int(os.environ.get("SVS_GUI_NUM_LEVELS", "6"))
     DEFAULT_DOWNSAMPLE: int = int(os.environ.get("SVS_GUI_DOWNSAMPLE", "2"))
     DEFAULT_EDGE_MODE: str = os.environ.get("SVS_GUI_EDGE_MODE", "crop")

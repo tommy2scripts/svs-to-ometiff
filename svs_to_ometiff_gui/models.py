@@ -14,8 +14,8 @@ class ConversionJob:
 
     input_path: str
     output_path: str = ""
-    tile_size: int = 512
-    compression: Optional[str] = "lzw"
+    tile_size: int = 1024
+    compression: Optional[str] = "zlib"
     num_levels: int = 6
     downsample_factor: int = 2
     edge_mode: str = "crop"

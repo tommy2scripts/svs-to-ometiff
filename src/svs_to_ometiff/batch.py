@@ -29,15 +29,15 @@ from svs_to_ometiff.converter import convert
 )
 @click.option(
     "--tile-size",
-    default=512,
+    default=1024,
     type=int,
     show_default=True,
     help="Output tile size (square) for the OME-TIFF.",
 )
 @click.option(
     "--compression",
-    default="none",
-    type=click.Choice(["lzw", "zlib", "deflate", "none"]),
+    default="zlib",
+    type=click.Choice(["zlib", "jpeg2000", "lzw", "deflate", "none"]),
     show_default=True,
     help="TIFF compression scheme. Use 'none' for maximum compatibility.",
 )
