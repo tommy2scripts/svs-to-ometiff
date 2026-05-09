@@ -9,21 +9,35 @@ Opens browser at http://127.0.0.1:8765
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
 
+from svs_to_ometiff_gui.config import Config
 from svs_to_ometiff_gui.file_dialogs import get_dialog_strategy
 from svs_to_ometiff_gui.models import ConversionJob
 from svs_to_ometiff_gui.services import ConversionService, resolve_path
 
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("svs_to_ometiff_gui")
+
 app = Flask(__name__)
 
 # Singleton service instance
+_config = Config()
 _service = ConversionService()
 _dialog = get_dialog_strategy()
 
@@ -321,14 +335,43 @@ def handle_open_folder():
     return jsonify({"status": "ok"})
 
 
+# ---------------------------------------------------------------------------
+# Request timing middleware
+# ---------------------------------------------------------------------------
+
+@app.before_request
+def _start_timer():
+    request._start_time = time.time()
+
+
+@app.after_request
+def _log_request(response):
+    duration = (time.time() - getattr(request, '_start_time', time.time())) * 1000
+    logger.info("%s %s %s %.0fms", request.method, request.path, response.status_code, duration)
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
+
+@app.route("/health")
+def health_check():
+    """Health check endpoint for monitoring."""
+    return jsonify({
+        "status": "ok",
+        "version": "0.2.0",
+        "active_jobs": 1 if _service.is_active else 0,
+    })
+
+
 def main():
-    print(WARNING_BANNER)
-    port = 8765
-    url = f"http://127.0.0.1:{port}"
-    print(f"  Opening browser at {url}")
+    logger.info(WARNING_BANNER)
+    url = f"http://{_config.HOST}:{_config.PORT}"
+    logger.info("Opening browser at %s", url)
     webbrowser.open(url)
-    print(f"  Server running on {url}  (Ctrl+C to quit)")
-    app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+    logger.info("Server running on %s  (Ctrl+C to quit)", url)
+    app.run(host=_config.HOST, port=_config.PORT, debug=False, use_reloader=False)
 
 
 if __name__ == "__main__":
