@@ -148,7 +148,7 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
                 m_queue.put((request_id, "progress", event))
 
             convert(
-                input_svs=input_path,
+                config_or_input_svs=input_path,
                 output_ometiff=output_path,
                 tile_size=job_template_dict.get("tile_size", 512),
                 compression=compression,

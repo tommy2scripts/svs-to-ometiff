@@ -24,7 +24,7 @@ class ConversionJob:
     def to_converter_kwargs(self) -> dict:
         """Return kwargs suitable for passing to ``convert()``."""
         return {
-            "input_svs": self.input_path,
+            "config_or_input_svs": self.input_path,
             "output_ometiff": self.output_path or None,
             "tile_size": self.tile_size,
             "compression": self.compression if self.compression != "none" else None,
