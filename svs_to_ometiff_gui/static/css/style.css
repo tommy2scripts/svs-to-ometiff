@@ -70,6 +70,7 @@ body {
   letter-spacing: -0.03em;
   background: var(--gradient-main);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: bg-pan 6s linear infinite;
   background-size: 200% auto;
