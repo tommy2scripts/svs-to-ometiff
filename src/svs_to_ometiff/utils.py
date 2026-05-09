@@ -3,15 +3,15 @@ General-purpose utilities for svs-to-ometiff.
 """
 
 from collections.abc import Callable
-from typing import Optional
+from typing import Any, Optional
 
-ProgressLogger = Callable[[str], None]
+ProgressLogger = Callable[..., None]
 
 
-def _log(verbose: bool, logger: Optional[ProgressLogger], message: str) -> None:
+def _log(verbose: bool, logger: Optional[ProgressLogger], message: str, **kwargs: Any) -> None:
     if not verbose:
         return
     if logger is None:
         print(message)
     else:
-        logger(message)
+        logger(message, **kwargs)

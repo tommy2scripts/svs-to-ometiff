@@ -118,11 +118,15 @@ class ConversionService:
         if queue is None:
             return
 
-        def progress_callback(message: str):
-            percent = estimate_percent(message)
+        def progress_callback(message: str, **kwargs):
             event: dict = {"message": message}
+            percent = kwargs.get("percent")
+            if percent is None:
+                percent = estimate_percent(message)
             if percent is not None:
                 event["percent"] = percent
+            if "phase" in kwargs:
+                event["phase"] = kwargs["phase"]
             self.latest_events[request_id] = {"type": "progress", "data": event}
             queue.put(("progress", event))
 
@@ -182,17 +186,23 @@ class ConversionService:
                     "percent": 0,
                 }))
 
-                def progress_callback(message: str, current_file=filename, i=idx):
-                    percent = estimate_percent(message)
+                def progress_callback(message: str, current_file=filename, i=idx, **kwargs):
                     event: dict = {
                         "message": message,
                         "file": current_file,
                         "file_idx": i,
                         "total_files": total_files,
                     }
+                    percent = kwargs.get("percent")
+                    if percent is None:
+                        percent = estimate_percent(message)
                     if percent is not None:
                         event["percent"] = percent
                         event["overall_percent"] = ((i * 100) + percent) / total_files
+                    else:
+                        event["overall_percent"] = (i * 100) / total_files
+                    if "phase" in kwargs:
+                        event["phase"] = kwargs["phase"]
                     self.latest_events[request_id] = {"type": "progress", "data": event}
                     queue.put(("progress", event))
 

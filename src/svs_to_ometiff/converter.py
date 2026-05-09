@@ -141,6 +141,7 @@ def _stage_level0_memmap(
     for item in iter_svs_rgb_tiles(
         config.input_svs,
         progress_interval=config.tile_progress_interval if config.verbose else 0,
+        progress_logger=config.progress_logger,
     ):
         y0 = item["y0"]
         y1 = item["y1"]
@@ -198,8 +199,8 @@ def convert(
     )
     estimated_ram_gb = estimated_ram / 1e9
 
-    _log(config.verbose, config.progress_logger, f"Reading SVS: {config.input_svs}")
-    _log(config.verbose, config.progress_logger, f"Output: {config.output_ometiff}")
+    _log(config.verbose, config.progress_logger, f"Reading SVS: {config.input_svs}", phase="setup", percent=5.0)
+    _log(config.verbose, config.progress_logger, f"Output: {config.output_ometiff}", phase="setup", percent=5.0)
     _log(
         config.verbose,
         config.progress_logger,
@@ -208,6 +209,8 @@ def convert(
             f"source tiles: {metadata['src_tile_width']}x"
             f"{metadata['src_tile_height']}, count={metadata['tile_count']}"
         ),
+        phase="setup",
+        percent=5.0,
     )
     _log(
         config.verbose,
@@ -224,7 +227,7 @@ def convert(
     output_dir = os.path.dirname(os.path.abspath(config.output_ometiff)) or None
     levels: list[np.ndarray] = []
     with tempfile.TemporaryDirectory(prefix="svs_to_ometiff_", dir=output_dir) as temp_dir:
-        _log(config.verbose, config.progress_logger, "Decoding SVS tiles to disk-backed level 0...")
+        _log(config.verbose, config.progress_logger, "Decoding SVS tiles to disk-backed level 0...", phase="tile_decoding", percent=10.0)
         level0 = _stage_level0_memmap(config, metadata, temp_dir)
 
         mpp = float(metadata["mpp"])
@@ -240,6 +243,8 @@ def convert(
             config.verbose,
             config.progress_logger,
             f"Building {config.num_levels}-level pyramid out of core...",
+            phase="pyramid_building",
+            percent=62.0,
         )
 
         levels = build_pyramid_memmaps(
@@ -253,7 +258,7 @@ def convert(
         )
         pyramid_shapes = [tuple(np.asarray(level).shape) for level in levels]
 
-        _log(config.verbose, config.progress_logger, "Writing OME-TIFF...")
+        _log(config.verbose, config.progress_logger, "Writing OME-TIFF...", phase="writing_ometiff", percent=86.0)
         try:
             write_pyramidal_ometiff(
                 config.output_ometiff,
@@ -283,5 +288,7 @@ def convert(
         config.verbose,
         config.progress_logger,
         f"Conversion complete: {config.output_ometiff} ({output_size / 1e9:.2f} GB)",
+        phase="complete",
+        percent=100.0,
     )
     return result

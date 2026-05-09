@@ -15,6 +15,7 @@ from typing import Any, Iterator, Optional
 import numpy as np
 import tifffile
 
+from svs_to_ometiff.utils import ProgressLogger, _log
 from svs_to_ometiff.yuyv_decoder import yuyv_to_rgb
 
 
@@ -175,6 +176,7 @@ def iter_svs_rgb_tiles(
     svs_path: str,
     *,
     progress_interval: int = 20,
+    progress_logger: Optional[ProgressLogger] = None,
 ) -> Iterator[dict[str, Any]]:
     """
     Yield decoded RGB source tiles with their placement coordinates.
@@ -203,9 +205,8 @@ def iter_svs_rgb_tiles(
             if progress_interval > 0 and ty % progress_interval == 0:
                 elapsed = time.time() - t_start
                 pct = 100 * ty / n_tiles_y
-                print(
-                    f"  Row {ty}/{n_tiles_y} ({pct:.0f}%) - {elapsed:.0f}s elapsed"
-                )
+                msg = f"Tile row {ty} of {n_tiles_y} ({pct:.0f}%) - {elapsed:.0f}s elapsed"
+                _log(True, progress_logger, msg, phase="tile_decoding", current=ty, total=n_tiles_y, percent=pct)
 
             y0 = ty * src_tile_h
             y1 = min(y0 + src_tile_h, img_h)
@@ -237,13 +238,14 @@ def iter_svs_rgb_tiles(
 
     if progress_interval > 0:
         elapsed = time.time() - t_start
-        print(f"Tiles decoded in {elapsed:.0f}s")
+        _log(True, progress_logger, f"Tiles decoded in {elapsed:.0f}s", phase="tile_decoding_complete", percent=100.0)
 
 
 def read_svs_full_image(
     svs_path: str,
     *,
     progress_interval: int = 20,
+    progress_logger: Optional[ProgressLogger] = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read all tiles from an SVS file and assemble the full-resolution RGB image.
@@ -277,7 +279,9 @@ def read_svs_full_image(
     full_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)
 
     t_start = time.time()
-    for item in iter_svs_rgb_tiles(svs_path, progress_interval=progress_interval):
+    for item in iter_svs_rgb_tiles(
+        svs_path, progress_interval=progress_interval, progress_logger=progress_logger
+    ):
         y0 = item["y0"]
         y1 = item["y1"]
         x0 = item["x0"]
