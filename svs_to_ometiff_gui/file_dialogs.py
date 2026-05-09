@@ -4,6 +4,7 @@ Provides a strategy interface so the app can use native dialogs locally
 and gracefully degrade to no-op in headless/cloud environments.
 """
 
+import logging
 import subprocess
 import sys
 from abc import ABC, abstractmethod
@@ -49,8 +50,8 @@ class NativeDialogStrategy(FileDialogStrategy):
                     return res.stdout.strip()
         except subprocess.TimeoutExpired:
             pass
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            logging.getLogger(__name__).warning("Native file dialog failed: %s", e)
         return ""
 
     def pick_files(self) -> List[str]:
@@ -84,8 +85,8 @@ class NativeDialogStrategy(FileDialogStrategy):
                     return [p for p in res.stdout.strip().split('\n') if p]
         except subprocess.TimeoutExpired:
             pass
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            logging.getLogger(__name__).warning("Native multi-file dialog failed: %s", e)
         return []
 
 

@@ -5,6 +5,7 @@ and path resolution logic. Flask routes delegate to this service.
 """
 
 import json
+import logging
 import os
 import re
 import threading
@@ -226,7 +227,7 @@ class ConversionService:
                 if request_id in self.progress_queues:
                     self.progress_queues[request_id].put((event_type, data))
             except Exception:
-                pass
+                logging.getLogger(__name__).exception("Failed to dispatch/update job progress")
 
     @property
     def is_active(self) -> bool:

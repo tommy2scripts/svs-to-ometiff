@@ -14,6 +14,12 @@
   const CIRC = 2 * Math.PI * 52; // stroke-dasharray
   let currentRequestId = null, inspectTimer = null, inspectAbort = null;
 
+  function escapeHTML(str) {
+    return String(str).replace(/[&<>"']/g, function (m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+  }
+
   // Batch specific UI
   let mode = 'single';
   const tabSingle = $('tabSingle'), tabBatch = $('tabBatch');
@@ -80,7 +86,7 @@
           ['Tile Count', String(data.tile_count)],
         ];
         slideInfoGrid.innerHTML = items.map(([l,v]) =>
-          '<div class="slide-info-item"><span class="label">'+l+'</span><span class="value">'+v+'</span></div>'
+          '<div class="slide-info-item"><span class="label">'+escapeHTML(l)+'</span><span class="value">'+escapeHTML(v)+'</span></div>'
         ).join('');
         if (data.convertible) {
           convertibleBadge.className = 'badge badge-ok';
@@ -157,6 +163,12 @@
     settingsBody.classList.toggle('open');
     settingsArrow.classList.toggle('open');
   });
+  settingsToggle.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      settingsToggle.click();
+    }
+  });
 
   // Progress ring helper
   function setProgress(pct) {
@@ -202,7 +214,7 @@
       // Render initial queue
       batchQueue.innerHTML = lines.map((l, i) => `
         <div class="batch-item" id="batch-item-${i}">
-          <span class="name" title="${l}">${l.split('/').pop().split('\\').pop()}</span>
+          <span class="name" title="${escapeHTML(l)}">${escapeHTML(l.split('/').pop().split('\\').pop())}</span>
           <span class="status status-pending">Pending</span>
         </div>
       `).join('');

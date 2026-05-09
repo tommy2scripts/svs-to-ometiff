@@ -26,7 +26,7 @@ A premium web-based graphical user interface for converting SVS whole-slide imag
 Install from the project directory:
 
 ```bash
-cd /path/to/svs-to-ometiff-gui
+cd /path/to/svs-to-ometiff
 pip install -e .
 ```
 
@@ -66,8 +66,8 @@ This will:
     *   Paste multiple full paths (one per line) into the **Input SVS Paths** text area.
     *   (Optional) Set an **Output Directory** for all converted files.
 4.  (Optional) Click **Advanced Settings** to adjust:
-    *   **Tile Size** (default: 512)
-    *   **Compression** (default: lzw; options: lzw, zlib, deflate, none)
+    *   **Tile Size** (default: 1024, optimized for 10x Xenium)
+    *   **Compression** (default: zlib; options: zlib, jpeg2000, lzw, deflate, none)
     *   **Pyramid Levels** (default: 6)
     *   **Downsample Factor** (default: 2)
     *   **Edge Mode** (default: crop; options: crop, pad)
@@ -89,15 +89,13 @@ This will:
 ## Project Structure
 
 ```
-svs-to-ometiff-gui/
-├── svs_to_ometiff_gui/
-│   ├── __init__.py
-│   ├── __main__.py           # python -m svs_to_ometiff_gui entry point
-│   ├── serve.py              # Flask app with SSE progress + /inspect endpoint
-│   └── templates/
-│       └── index.html         # Single-page GUI (glassmorphism design)
+svs-to-ometiff/
+├── src/svs_to_ometiff/       # Core conversion library and CLI
+├── svs_to_ometiff_gui/       # Flask web application and background services
+│   ├── templates/index.html  # Single-page GUI
+│   └── static/               # Assets (CSS/JS)
+├── tests/                    # Pytest suite
 ├── pyproject.toml
-├── requirements.txt
 └── README.md
 ```
 
