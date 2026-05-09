@@ -47,7 +47,15 @@ WARNING_BANNER = """
 
 
 def _resolve_path(path: str) -> Optional[str]:
-    """If path is a bare filename, search common directories for it."""
+    """
+    Locate an existing file matching `path`, searching common user locations when `path` is a bare filename.
+    
+    Parameters:
+        path (str): A file path or bare filename to resolve.
+    
+    Returns:
+        Optional[str]: The original `path` if it exists, or a matching candidate from ~/Downloads, ~/Desktop, or the current working directory when `path` is a basename; `None` if no existing file is found.
+    """
     if os.path.isfile(path):
         return path
     # Check if it's just a basename (no directory separator)
@@ -65,13 +73,39 @@ def _resolve_path(path: str) -> Optional[str]:
 
 
 def _run_conversion(request_id: str, params: dict):
-    """Run conversion in a background thread, pushing progress events to the queue."""
+    """
+    Run a conversion task for the given request and publish progress, completion, or error events to the per-request queue.
+    
+    This function looks up the queue registered for request_id in _progress_queues; if none exists it returns immediately. While the conversion runs it updates _latest_events[request_id] and pushes tuples into the queue in the form (event_type, data):
+    
+    - "progress": data is {"message": str, "percent": float} where "percent" is present only when provided by the converter.
+    - "complete": data is an empty dict.
+    - "error": data is {"error": str} containing the exception string.
+    
+    Parameters:
+        request_id (str): Identifier for the conversion request whose queue and latest-event entry will be updated.
+        params (dict): Conversion parameters. Expected keys:
+            - "input_path" (str): path to the input .svs file (required).
+            - "output_path" (str): path for the output .ome.tiff (optional).
+            - "tile_size" (int): tile size to pass to the converter (optional, default 512).
+            - "compression" (str): compression setting for the converter (optional).
+            - "num_levels" (int): number of pyramid levels (optional).
+            - "downsample_factor" (int): downsample factor between levels (optional).
+    """
     queue = _progress_queues.get(request_id)
     if queue is None:
         return
 
     def progress_callback(message: str, percent: float = None):
-        """Callback passed to the converter to report progress."""
+        """
+        Publish a progress event for the current conversion request.
+        
+        Builds an event containing a human-readable message and an optional completion percentage, stores it as the latest event for the request, and enqueues it for streaming to connected clients.
+        
+        Parameters:
+            message (str): Human-readable progress message describing the current step.
+            percent (float | None): Optional completion percentage (e.g., 0.0–100.0); omitted when unknown.
+        """
         event = {"message": message}
         if percent is not None:
             event["percent"] = percent
@@ -97,11 +131,28 @@ def _run_conversion(request_id: str, params: dict):
 
 @app.route("/")
 def index():
+    """
+    Render and return the application's index HTML page.
+    
+    Returns:
+        A Flask response object containing the rendered `index.html` template.
+    """
     return render_template("index.html")
 
 
 @app.route("/convert", methods=["POST"])
 def handle_convert():
+    """
+    Handle a request to start a new SVS-to-OME-TIFF conversion and queue its background execution.
+    
+    Validates the incoming JSON payload, resolves and checks the input SVS path, derives or validates the output path and its directory writability, validates optional numeric parameters (e.g., `tile_size`), ensures only one conversion runs at a time, registers per-request progress state, and starts a daemon thread to perform the conversion.
+    
+    Returns:
+        A Flask JSON response:
+        - On success: JSON `{"request_id": <uuid>, "output_path": <path>}` with HTTP 200.
+        - If a conversion is already running: JSON `{"error": <message>}` with HTTP 409.
+        - On validation failure (missing/invalid input_path, non-.svs input, unwritable output directory, invalid tile_size, or unresolved path): JSON `{"error": <message>}` with HTTP 400.
+    """
     global _active_conversion, _conversion_thread
     with _conversion_lock:
         if _active_conversion:
@@ -180,12 +231,31 @@ def handle_convert():
 
 @app.route("/progress/<request_id>")
 def stream_progress(request_id: str):
+    """
+    Stream server-sent events for conversion progress identified by `request_id`.
+    
+    Replays the last cached event for the request (if any) immediately on connect, then streams queued progress events until a `complete` or `error` event is emitted. When the stream ends the function cleans up per-request state and resets the active-conversion flag.
+    
+    Parameters:
+        request_id (str): Identifier of the conversion request whose progress should be streamed.
+    
+    Returns:
+        Response: A Flask `Response` that streams SSE events (`event: progress`, `event: complete`, `event: error`) with JSON payloads for each event.
+    """
     queue = _progress_queues.get(request_id)
     if queue is None:
         return jsonify({"error": "Invalid request_id"}), 404
 
     def generate():
         # Replay latest event on SSE reconnect
+        """
+        Stream server-sent events (SSE) for a conversion request and perform cleanup when the stream ends.
+        
+        Replays the last cached event for the request (complete, error, or a progress update) immediately when a client reconnects, then yields queued events from the per-request queue until a `complete` or `error` event is emitted. When the generator exits it joins the conversion thread (with a short timeout), removes per-request state from internal registries, and clears the active-conversion flag.
+        
+        Returns:
+            An iterator that yields SSE-formatted strings (each string contains an `event: <type>` line and a `data: <json>` line, terminated by a blank line).
+        """
         latest = _latest_events.get(request_id)
         if latest:
             event_type = latest["type"]
@@ -233,6 +303,19 @@ def stream_progress(request_id: str):
 
 @app.route("/open_folder", methods=["POST"])
 def handle_open_folder():
+    """
+    Open a filesystem folder specified in the request JSON and return the operation status.
+    
+    Expects a JSON body with a "path" field containing the folder path string. If the path is not a non-empty string or does not refer to an existing directory, the endpoint returns an error response with HTTP 400.
+    
+    On success, opens the folder using the platform's default file manager:
+    - macOS: `open`
+    - Windows: `explorer`
+    - Other: `xdg-open`
+    
+    Returns:
+        A Flask JSON response: `{"status": "ok"}` on success, or `{"error": "Invalid folder path"}` with HTTP 400 when the input path is missing or not a directory.
+    """
     body = request.get_json(force=True)
     folder_path = body.get("path", "").strip()
     if not folder_path or not os.path.isdir(folder_path):
@@ -250,6 +333,11 @@ def handle_open_folder():
 
 
 def main():
+    """
+    Start the GUI server, open the default web browser to the server URL, and block while serving requests.
+    
+    Prints the experimental warning banner, opens the default browser at http://127.0.0.1:8765, and runs the Flask app bound to 127.0.0.1:8765 until the process is terminated (e.g., Ctrl+C).
+    """
     print(WARNING_BANNER)
     port = 8765
     url = f"http://127.0.0.1:{port}"
