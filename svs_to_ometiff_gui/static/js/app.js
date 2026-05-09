@@ -11,7 +11,7 @@
   const openFolderBtn = $('openFolderBtn'), logConsole = $('logConsole');
   const slideInfo = $('slideInfo'), slideInfoGrid = $('slideInfoGrid');
   const convertibleBadge = $('convertibleBadge');
-  const CIRC = 2 * Math.PI * 52; // stroke-dasharray
+  const CIRC = 2 * Math.PI * 60; // stroke-dasharray
   let currentRequestId = null, inspectTimer = null, inspectAbort = null;
 
   function escapeHTML(str) {

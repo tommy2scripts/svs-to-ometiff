@@ -119,9 +119,16 @@
       <div id="progressContent" class="hidden">
         <div class="progress-ring-container">
           <div class="progress-ring">
-            <svg width="120" height="120" viewBox="0 0 120 120">
-              <circle class="track" cx="60" cy="60" r="52"/>
-              <circle class="fill" id="progressRingFill" cx="60" cy="60" r="52" stroke-dasharray="326.73" stroke-dashoffset="326.73"/>
+            <svg width="140" height="140" viewBox="0 0 140 140">
+              <defs>
+                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#3b82f6" />
+                  <stop offset="50%" stop-color="#8b5cf6" />
+                  <stop offset="100%" stop-color="#ec4899" />
+                </linearGradient>
+              </defs>
+              <circle class="track" cx="70" cy="70" r="60"/>
+              <circle class="fill" id="progressRingFill" cx="70" cy="70" r="60" stroke-dasharray="376.99" stroke-dashoffset="376.99"/>
             </svg>
             <div class="pct" id="progressPct">0%</div>
           </div>
