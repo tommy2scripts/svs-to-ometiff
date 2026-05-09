@@ -147,6 +147,55 @@ def _run_conversion(request_id: str, params: dict):
         queue.put(("error", {"error": str(exc)}))
 
 
+def _run_batch_conversion(request_id: str, inputs: list[str], output_dir: str, params: dict):
+    queue = _progress_queues.get(request_id)
+    if queue is None:
+        return
+
+    total_files = len(inputs)
+    compression = params.get("compression", "lzw")
+    if compression == "none":
+        compression = None
+
+    try:
+        for idx, input_path in enumerate(inputs):
+            filename = Path(input_path).name
+            base = Path(input_path).with_suffix("")
+            out_filename = str(base.name) + ".ome.tiff"
+            output_path = str(Path(output_dir) / out_filename)
+
+            # Signal file start
+            queue.put(("progress", {"message": f"Starting {filename}...", "file": filename, "file_idx": idx, "total_files": total_files, "percent": 0}))
+            
+            def progress_callback(message: str, current_file=filename, i=idx):
+                percent = _estimate_percent(message)
+                event: dict = {"message": message, "file": current_file, "file_idx": i, "total_files": total_files}
+                if percent is not None:
+                    event["percent"] = percent
+                    event["overall_percent"] = ((i * 100) + percent) / total_files
+                _latest_events[request_id] = {"type": "progress", "data": event}
+                queue.put(("progress", event))
+
+            convert(
+                input_svs=input_path,
+                output_ometiff=output_path,
+                tile_size=params.get("tile_size", 512),
+                compression=compression,
+                num_levels=params.get("num_levels", 6),
+                downsample_factor=params.get("downsample_factor", 2),
+                edge_mode=params.get("edge_mode", "crop"),
+                progress_logger=progress_callback,
+            )
+            
+            queue.put(("progress", {"message": f"Completed {filename}", "file": filename, "file_idx": idx, "total_files": total_files, "percent": 100, "overall_percent": ((idx+1)*100)/total_files}))
+
+        _latest_events[request_id] = {"type": "complete", "data": {}}
+        queue.put(("complete", {}))
+    except Exception as exc:  # noqa: BLE001
+        _latest_events[request_id] = {"type": "error", "data": {"error": str(exc)}}
+        queue.put(("error", {"error": str(exc)}))
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -261,6 +310,81 @@ def handle_convert():
     thread.start()
 
     return jsonify({"request_id": request_id, "output_path": output_path})
+
+
+@app.route("/convert/batch", methods=["POST"])
+def handle_convert_batch():
+    if _state["active"]:
+        return jsonify({"error": "A conversion is already running."}), 409
+
+    body = request.get_json(force=True)
+    inputs = body.get("inputs", [])
+    output_dir = body.get("output_dir", "").strip()
+
+    if not inputs or not isinstance(inputs, list):
+        return jsonify({"error": "inputs must be a non-empty list of paths"}), 400
+    
+    if not output_dir:
+        # Default to the directory of the first valid input
+        if len(inputs) > 0:
+            first_resolved = _resolve_path(inputs[0])
+            if first_resolved:
+                output_dir = str(Path(first_resolved).parent)
+            else:
+                output_dir = str(Path.cwd())
+        else:
+            output_dir = str(Path.cwd())
+
+    # Resolve all inputs
+    resolved_inputs = []
+    for p in inputs:
+        resolved = _resolve_path(p)
+        if resolved is None:
+            return jsonify({"error": f"File not found: {p}"}), 400
+        if not resolved.lower().endswith(".svs"):
+            return jsonify({"error": f"File must be .svs: {p}"}), 400
+        resolved_inputs.append(resolved)
+
+    # Validate output dir
+    out_dir_obj = Path(output_dir)
+    if not out_dir_obj.is_dir() and not out_dir_obj.parent.is_dir():
+         return jsonify({"error": f"Invalid output directory: {output_dir}"}), 400
+    
+    out_dir_obj.mkdir(parents=True, exist_ok=True)
+    if not os.access(output_dir, os.W_OK):
+        return jsonify({"error": f"Output directory is not writable: {output_dir}"}), 400
+
+    # Validate integer params
+    for int_val in ("tile_size", "num_levels", "downsample_factor"):
+        val = body.get(int_val)
+        if val is not None:
+            try:
+                v = int(val)
+                if v <= 0:
+                    raise ValueError("Must be positive")
+            except Exception:  # noqa: BLE001
+                return jsonify({"error": f"{int_val} must be positive int"}), 400
+
+    request_id = str(uuid.uuid4())
+    queue: Queue = Queue()
+    _progress_queues[request_id] = queue
+    _state["active"] = True
+
+    params = {}
+    config_keys = ("tile_size", "compression", "num_levels", "downsample_factor", "edge_mode")
+    for key in config_keys:
+        val = body.get(key)
+        if val is not None:
+            params[key] = val
+
+    thread = threading.Thread(
+        target=_run_batch_conversion,
+        args=(request_id, resolved_inputs, output_dir, params),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({"request_id": request_id, "output_dir": output_dir, "count": len(resolved_inputs)})
 
 
 @app.route("/progress/<request_id>")

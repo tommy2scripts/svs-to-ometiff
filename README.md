@@ -7,7 +7,8 @@ A premium web-based graphical user interface for converting SVS whole-slide imag
 ## Features
 
 - **Slide Info Preview** — Automatically inspects SVS metadata (dimensions, MPP, magnification, compression, tile count) before conversion
-- **Two-Column Layout** — Configuration on the left, live progress on the right
+- **Batch Processing** — Queue multiple SVS files for sequential processing with individual and overall progress tracking
+- **Two-Column Layout** — Configuration on the left, live progress/batch queue on the right
 - **Circular Progress Ring** — SVG-based percentage display with real-time updates
 - **Live Log Console** — Real-time scrolling log output from the converter
 - **Glassmorphism Design** — Premium dark-mode UI with frosted glass panels, gradient accents, and smooth animations
@@ -55,19 +56,24 @@ This will:
 
 ### Web Interface
 
-1.  **Drag & drop** an `.svs` file onto the drop zone, or click to browse.
-2.  The **Input SVS Path** field will be populated with the filename — paste the full path.
-3.  A **Slide Info** card will automatically appear showing slide metadata.
-4.  The **Output Path** is auto-derived (same directory, `.ome.tiff` extension). You may edit it manually.
-5.  (Optional) Click **Advanced Settings** to adjust:
-    - **Tile Size** (default: 512)
-    - **Compression** (default: lzw; options: lzw, zlib, deflate, none)
-    - **Pyramid Levels** (default: 6)
-    - **Downsample Factor** (default: 2)
-    - **Edge Mode** (default: crop; options: crop, pad)
-6.  Click **Convert** to start the conversion.
-7.  Monitor progress via the **circular progress ring** and **log console**.
-8.  When complete, click **Open Folder** to reveal the output file.
+1.  **Select Mode:** Choose between **Single File** or **Batch Mode** at the top.
+2.  **For Single File:**
+    *   **Drag & drop** an `.svs` file onto the drop zone, or click to browse.
+    *   The **Input SVS Path** field will be populated with the filename — paste the full path.
+    *   A **Slide Info** card will automatically appear showing slide metadata.
+    *   The **Output Path** is auto-derived (same directory, `.ome.tiff` extension).
+3.  **For Batch Mode:**
+    *   Paste multiple full paths (one per line) into the **Input SVS Paths** text area.
+    *   (Optional) Set an **Output Directory** for all converted files.
+4.  (Optional) Click **Advanced Settings** to adjust:
+    *   **Tile Size** (default: 512)
+    *   **Compression** (default: lzw; options: lzw, zlib, deflate, none)
+    *   **Pyramid Levels** (default: 6)
+    *   **Downsample Factor** (default: 2)
+    *   **Edge Mode** (default: crop; options: crop, pad)
+5.  Click **Convert** to start the conversion.
+6.  Monitor progress via the **circular progress ring**, **batch queue list**, and **log console**.
+7.  When complete, click **Open Folder** to reveal the output.
 
 ### API Endpoints
 
@@ -75,8 +81,9 @@ This will:
 |----------|--------|-------------|
 | `/` | GET | Serves the single-page GUI |
 | `/inspect?path=<svs_path>` | GET | Returns slide metadata (dimensions, MPP, magnification, etc.) |
-| `/convert` | POST | Starts a conversion, returns a `request_id` for progress tracking |
-| `/progress/<request_id>` | GET | SSE stream of conversion progress events |
+| `/convert` | POST | Starts a single conversion, returns a `request_id` |
+| `/convert/batch` | POST | Starts sequential batch conversion of multiple paths, returns a `request_id` |
+| `/progress/<request_id>` | GET | SSE stream of conversion progress events (supports both single and batch modes) |
 | `/open_folder` | POST | Opens the output folder in the OS file manager |
 
 ## Project Structure

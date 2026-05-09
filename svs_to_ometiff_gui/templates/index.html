@@ -138,6 +138,22 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
 /* Idle state */
 .idle-placeholder { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.82rem; }
 .hidden { display: none !important; }
+/* Tabs */
+.tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.5rem; }
+.tab-btn { background: none; border: none; color: var(--text-dim); font-size: 0.85rem; font-weight: 500; cursor: pointer; padding: 0.4rem 0.8rem; border-radius: var(--radius-sm); transition: all 0.2s; }
+.tab-btn:hover { color: var(--text); background: var(--glass); }
+.tab-btn.active { color: var(--accent); background: var(--accent-glow); }
+.tab-content { display: none; animation: fadeIn 0.3s ease; }
+.tab-content.active { display: block; }
+/* Batch Queue */
+.batch-queue { margin-top: 1rem; border-top: 1px solid var(--glass-border); padding-top: 1rem; }
+.batch-item { display: flex; align-items: center; justify-content: space-between; font-size: 0.78rem; padding: 0.4rem 0.5rem; border-radius: 4px; background: var(--bg2); margin-bottom: 0.4rem; }
+.batch-item .name { font-family: var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.batch-item .status { font-weight: 600; font-size: 0.7rem; }
+.status-pending { color: var(--text-dim); }
+.status-running { color: var(--accent); }
+.status-done { color: var(--green); }
+.status-error { color: var(--red); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 </style>
 </head>
@@ -157,34 +173,52 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
   <!-- LEFT COLUMN -->
   <div class="left-col">
     <div class="panel">
-      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop SVS file or click to browse">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <div class="dropzone-text">Drop <strong>.svs</strong> file here or click to browse</div>
+      <div class="tabs">
+        <button type="button" class="tab-btn active" id="tabSingle">Single File</button>
+        <button type="button" class="tab-btn" id="tabBatch">Batch Mode</button>
       </div>
-      <input type="file" id="fileInput" accept=".svs" style="display:none">
 
-      <div class="form-group">
-        <label for="inputPath">Input SVS Path</label>
-        <div class="input-row">
-          <input type="text" id="inputPath" placeholder="/path/to/slide.svs" autocomplete="off">
-          <button type="button" class="btn btn-secondary btn-sm" id="browseBtn">Browse</button>
+      <div class="tab-content active" id="contentSingle">
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop SVS file or click to browse">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <div class="dropzone-text">Drop <strong>.svs</strong> file here or click to browse</div>
+        </div>
+        <input type="file" id="fileInput" accept=".svs" style="display:none">
+
+        <div class="form-group">
+          <label for="inputPath">Input SVS Path</label>
+          <div class="input-row">
+            <input type="text" id="inputPath" placeholder="/path/to/slide.svs" autocomplete="off">
+            <button type="button" class="btn btn-secondary btn-sm" id="browseBtn">Browse</button>
+          </div>
+        </div>
+        <div id="pathHint" class="hidden" style="margin:-0.5rem 0 0.5rem;font-size:0.72rem;color:var(--text-muted);">
+          Copied filename — paste the full path above (Finder → Right-click → Option → Copy as Pathname).
+        </div>
+
+        <!-- Slide Info Card -->
+        <div class="panel slide-info" id="slideInfo" style="background:var(--bg2);border-color:var(--glass-border);">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;">
+            Slide Info <span class="badge" id="convertibleBadge"></span>
+          </div>
+          <div class="slide-info-grid" id="slideInfoGrid"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="outputPath">Output Path</label>
+          <input type="text" id="outputPath" placeholder="Auto-derived from input" autocomplete="off">
         </div>
       </div>
-      <div id="pathHint" class="hidden" style="margin:-0.5rem 0 0.5rem;font-size:0.72rem;color:var(--text-muted);">
-        Copied filename — paste the full path above (Finder → Right-click → Option → Copy as Pathname).
-      </div>
 
-      <!-- Slide Info Card -->
-      <div class="panel slide-info" id="slideInfo" style="background:var(--bg2);border-color:var(--glass-border);">
-        <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;">
-          Slide Info <span class="badge" id="convertibleBadge"></span>
+      <div class="tab-content" id="contentBatch">
+        <div class="form-group">
+          <label for="batchInputs">Input SVS Paths (One per line)</label>
+          <textarea id="batchInputs" rows="6" style="width: 100%; padding: 0.5rem 0.7rem; background: var(--bg2); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text); font-size: 0.8rem; font-family: var(--mono); outline: none; resize: vertical; margin-bottom: 0.5rem;" placeholder="/path/to/slide1.svs&#10;/path/to/slide2.svs"></textarea>
         </div>
-        <div class="slide-info-grid" id="slideInfoGrid"></div>
-      </div>
-
-      <div class="form-group">
-        <label for="outputPath">Output Path</label>
-        <input type="text" id="outputPath" placeholder="Auto-derived from input" autocomplete="off">
+        <div class="form-group">
+          <label for="batchOutputDir">Output Directory (Optional)</label>
+          <input type="text" id="batchOutputDir" placeholder="Defaults to input file's directory" autocomplete="off">
+        </div>
       </div>
 
       <!-- Settings -->
@@ -245,6 +279,9 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
         <button type="button" class="btn btn-secondary btn-sm" id="openFolderBtn">Open Folder</button>
       </div>
       <div class="result-box result-err" id="errorBox"></div>
+
+      <!-- Batch Queue -->
+      <div id="batchQueue" class="batch-queue hidden"></div>
     </div>
 
     <!-- Log Console -->
@@ -274,6 +311,31 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
   const CIRC = 2 * Math.PI * 52; // stroke-dasharray
   let currentRequestId = null, inspectTimer = null, inspectAbort = null;
 
+  // Batch specific UI
+  let mode = 'single';
+  const tabSingle = $('tabSingle'), tabBatch = $('tabBatch');
+  const contentSingle = $('contentSingle'), contentBatch = $('contentBatch');
+  const batchInputs = $('batchInputs'), batchOutputDir = $('batchOutputDir'), batchQueue = $('batchQueue');
+
+  tabSingle.addEventListener('click', () => {
+    mode = 'single';
+    tabSingle.classList.add('active'); tabBatch.classList.remove('active');
+    contentSingle.classList.add('active'); contentBatch.classList.remove('active');
+    updateOutput();
+  });
+  tabBatch.addEventListener('click', () => {
+    mode = 'batch';
+    tabBatch.classList.add('active'); tabSingle.classList.remove('active');
+    contentBatch.classList.add('active'); contentSingle.classList.remove('active');
+    updateBatchStatus();
+  });
+
+  function updateBatchStatus() {
+    const lines = batchInputs.value.split('\n').map(l => l.trim()).filter(l => l);
+    convertBtn.disabled = lines.length === 0;
+  }
+  batchInputs.addEventListener('input', updateBatchStatus);
+
   function deriveOutput(p) {
     if (!p) return '';
     const dot = p.lastIndexOf('.');
@@ -282,6 +344,7 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
   }
 
   function updateOutput() {
+    if (mode === 'batch') return;
     const v = inputPath.value.trim();
     if (v) outputPath.value = deriveOutput(v);
     else outputPath.value = '';
@@ -375,30 +438,55 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
     el.textContent = '> ' + msg;
     logConsole.appendChild(el);
     logConsole.scrollTop = logConsole.scrollHeight;
-    // Remove fresh highlight after a moment
     setTimeout(() => el.classList.remove('fresh'), 1500);
   }
 
   // Convert
   convertBtn.addEventListener('click', () => {
-    const inp = inputPath.value.trim();
-    if (!inp) return;
-    const payload = {
-      input_path: inp,
-      output_path: outputPath.value.trim() || undefined,
+    let payload = {}, url = '/convert';
+
+    if (mode === 'single') {
+      const inp = inputPath.value.trim();
+      if (!inp) return;
+      payload = {
+        input_path: inp,
+        output_path: outputPath.value.trim() || undefined,
+      };
+    } else {
+      const lines = batchInputs.value.split('\n').map(l => l.trim()).filter(l => l);
+      if (lines.length === 0) return;
+      payload = {
+        inputs: lines,
+        output_dir: batchOutputDir.value.trim() || undefined,
+      };
+      url = '/convert/batch';
+
+      // Render initial queue
+      batchQueue.innerHTML = lines.map((l, i) => `
+        <div class="batch-item" id="batch-item-${i}">
+          <span class="name" title="${l}">${l.split('/').pop().split('\\').pop()}</span>
+          <span class="status status-pending">Pending</span>
+        </div>
+      `).join('');
+      batchQueue.classList.remove('hidden');
+    }
+
+    Object.assign(payload, {
       tile_size: parseInt($('tileSize').value, 10),
       compression: $('compression').value,
       num_levels: parseInt($('numLevels').value, 10),
       downsample_factor: parseInt($('downsampleFactor').value, 10),
       edge_mode: $('edgeMode').value,
-    };
+    });
+
     convertBtn.disabled = true; convertBtn.textContent = 'Converting…';
     completionBox.classList.remove('visible'); errorBox.classList.remove('visible');
     idlePlaceholder.classList.add('hidden'); progressContent.classList.remove('hidden');
+    if (mode === 'single') batchQueue.classList.add('hidden');
     setProgress(0); progressMsg.textContent = 'Starting conversion…';
-    logConsole.innerHTML = '';
+    logConsole.innerHTML = '<div class="log-line" style="color:var(--text-muted);">Waiting for conversion...</div>';
 
-    fetch('/convert', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
       .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Request failed'); }); return r.json(); })
       .then(data => { currentRequestId = data.request_id; listenProgress(data.request_id); })
       .catch(err => {
@@ -414,7 +502,28 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
       try {
         const d = JSON.parse(e.data);
         if (d.message) { progressMsg.textContent = d.message; addLog(d.message); }
-        if (typeof d.percent === 'number') setProgress(d.percent);
+        
+        // Progress parsing
+        if (typeof d.overall_percent === 'number') {
+           setProgress(d.overall_percent);
+        } else if (typeof d.percent === 'number') {
+           setProgress(d.percent);
+        }
+
+        // Batch Queue Updates
+        if (typeof d.file_idx === 'number') {
+           const bItem = $(`batch-item-${d.file_idx}`);
+           if (bItem) {
+               const statusSpan = bItem.querySelector('.status');
+               if (d.percent === 100) {
+                   statusSpan.className = 'status status-done';
+                   statusSpan.textContent = 'Done';
+               } else {
+                   statusSpan.className = 'status status-running';
+                   statusSpan.textContent = Math.round(d.percent) + '%';
+               }
+           }
+        }
       } catch(_) {}
     });
     es.addEventListener('complete', () => {
@@ -439,7 +548,10 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
 
   // Open folder
   openFolderBtn.addEventListener('click', () => {
-    const out = outputPath.value.trim(); if (!out) return;
+    let out = '';
+    if (mode === 'single') out = outputPath.value.trim();
+    else out = batchOutputDir.value.trim() || batchInputs.value.split('\n')[0].trim();
+    if (!out) return;
     let dir = out.substring(0, out.lastIndexOf('/')); if (!dir) dir = '.';
     fetch('/open_folder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path:dir}) }).catch(()=>{});
   });
