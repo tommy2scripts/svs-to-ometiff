@@ -43,7 +43,7 @@ from svs_to_ometiff.converter import convert
 )
 @click.option(
     "--num-levels",
-    default=3,
+    default=6,
     type=int,
     show_default=True,
     help="Number of pyramid levels (including full resolution).",

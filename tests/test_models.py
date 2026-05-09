@@ -8,8 +8,8 @@ class TestConversionJob:
 
     def test_defaults(self):
         job = ConversionJob(input_path="/path/to/slide.svs")
-        assert job.tile_size == 512
-        assert job.compression == "lzw"
+        assert job.tile_size == 1024
+        assert job.compression == "zlib"
         assert job.num_levels == 6
         assert job.downsample_factor == 2
         assert job.edge_mode == "crop"
@@ -22,7 +22,7 @@ class TestConversionJob:
             compression="zlib",
         )
         kw = job.to_converter_kwargs()
-        assert kw["input_svs"] == "/in.svs"
+        assert kw["config_or_input_svs"] == "/in.svs"
         assert kw["output_ometiff"] == "/out.ome.tiff"
         assert kw["tile_size"] == 256
         assert kw["compression"] == "zlib"

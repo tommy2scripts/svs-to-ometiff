@@ -14,7 +14,7 @@ class TestConfig:
         cfg = Config()
         assert cfg.HOST == os.environ.get("SVS_GUI_HOST", "127.0.0.1")
         assert cfg.PORT == int(os.environ.get("SVS_GUI_PORT", "8765"))
-        assert cfg.DEFAULT_TILE_SIZE == 512
+        assert cfg.DEFAULT_TILE_SIZE == 1024
 
     def test_default_port(self):
         from svs_to_ometiff_gui.config import Config
