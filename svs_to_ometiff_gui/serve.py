@@ -83,7 +83,7 @@ def _estimate_percent(message: str) -> Optional[float]:
         return 82.0
     if "writing" in low and "ome" in low.replace("-", ""):
         return 86.0
-    if low.startswith("  level"):
+    if message.lower().startswith("  level"):
         return 92.0
     if "done in" in low:
         return 100.0

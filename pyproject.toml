@@ -13,6 +13,12 @@ dependencies = [
     "flask>=2.3",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
 [project.scripts]
 svs-to-ometiff-gui = "svs_to_ometiff_gui.serve:main"
 
@@ -20,4 +26,9 @@ svs-to-ometiff-gui = "svs_to_ometiff_gui.serve:main"
 include = ["svs_to_ometiff_gui*"]
 
 [tool.setuptools.package-data]
-svs_to_ometiff_gui = ["templates/*.html"]
+svs_to_ometiff_gui = ["templates/*.html", "static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-v --tb=short -p no:napari -p no:zarr"
