@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/tommytran/svs2ometiff/svs-to-ometiff/svs_to_ometiff_gui/serve.py", line 25, in <module>
+    from svs_to_ometiff_gui.services import ConversionService, resolve_path
+  File "/Users/tommytran/svs2ometiff/svs-to-ometiff/svs_to_ometiff_gui/services.py", line 19, in <module>
+    from svs_to_ometiff.converter import convert
+ModuleNotFoundError: No module named 'svs_to_ometiff'
