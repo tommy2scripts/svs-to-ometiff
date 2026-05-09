@@ -10,27 +10,22 @@ Opens browser at http://127.0.0.1:8765
 
 import json
 import os
-import re
 import subprocess
 import sys
-import threading
-import uuid
 import webbrowser
 from pathlib import Path
-from queue import Queue
-from typing import Optional
 
 from flask import Flask, Response, jsonify, render_template, request
 
-from svs_to_ometiff.converter import convert
-from svs_to_ometiff.inspect import inspect_svs
+from svs_to_ometiff_gui.file_dialogs import get_dialog_strategy
+from svs_to_ometiff_gui.models import ConversionJob
+from svs_to_ometiff_gui.services import ConversionService, resolve_path
 
 app = Flask(__name__)
 
-# In-memory store for progress queues
-_progress_queues: dict[str, Queue] = {}
-_state = {"active": False}
-_latest_events: dict[str, dict] = {}
+# Singleton service instance
+_service = ConversionService()
+_dialog = get_dialog_strategy()
 
 WARNING_BANNER = """
 \033[33m
@@ -46,154 +41,19 @@ WARNING_BANNER = """
 \033[0m
 """
 
+
 # ---------------------------------------------------------------------------
-# Progress estimation
+# Backward-compatible aliases (used by existing tests)
 # ---------------------------------------------------------------------------
-# The converter emits text messages via progress_logger. We parse these to
-# estimate a percentage using a phased model:
-#   0 - 10 %   reading metadata / setup
-#  10 - 60 %   tile decoding  (track "Tile row X of Y")
-#  60 – 85 %   pyramid building
-#  85 – 98 %   writing OME-TIFF
-#  100 %       done
-
-_TILE_ROW_RE = re.compile(r"Tile row\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
+def _resolve_path(path: str):
+    """Thin wrapper kept for backward compatibility with tests."""
+    return resolve_path(path)
 
 
-def _estimate_percent(message: str) -> Optional[float]:
-    """Parse a converter progress message and return an estimated percent."""
-    msg = message.strip()
-
-    # Tile row progress → 10-60%
-    m = _TILE_ROW_RE.search(msg)
-    if m:
-        current, total = int(m.group(1)), int(m.group(2))
-        if total > 0:
-            frac = current / total
-            return round(10 + frac * 50, 1)
-
-    low = msg.lower()
-    if "reading" in low or "metadata" in low or "opening" in low:
-        return 5.0
-    if "building" in low and "pyramid" in low:
-        return 62.0
-    if "level" in low and "memmap" in low:
-        return 70.0
-    if "pyramid built" in low:
-        return 82.0
-    if "writing" in low and "ome" in low.replace("-", ""):
-        return 86.0
-    if message.lower().startswith("  level"):
-        return 92.0
-    if "done in" in low:
-        return 100.0
-
-    return None
-
-
-def _resolve_path(path: str) -> Optional[str]:
-    """If path is a bare filename, search common directories for it."""
-    p = Path(path)
-    if p.is_file():
-        return str(p)
-    # Check if it's just a basename (no directory separator)
-    if "/" not in path and "\\" not in path:
-        home = Path.home()
-        candidates = [
-            home / "Downloads" / path,
-            home / "Desktop" / path,
-            Path.cwd() / path,
-        ]
-        for c in candidates:
-            if c.is_file():
-                return str(c)
-    return None
-
-
-def _run_conversion(request_id: str, params: dict):
-    """Run conversion in a background thread, pushing progress events to the queue."""
-    queue = _progress_queues.get(request_id)
-    if queue is None:
-        return
-
-    def progress_callback(message: str):
-        """Callback passed to the converter to report progress."""
-        percent = _estimate_percent(message)
-        event: dict = {"message": message}
-        if percent is not None:
-            event["percent"] = percent
-        _latest_events[request_id] = {"type": "progress", "data": event}
-        queue.put(("progress", event))
-
-    try:
-        compression = params.get("compression", "lzw")
-        if compression == "none":
-            compression = None
-
-        convert(
-            input_svs=params["input_path"],
-            output_ometiff=params.get("output_path"),
-            tile_size=params.get("tile_size", 512),
-            compression=compression,
-            num_levels=params.get("num_levels", 6),
-            downsample_factor=params.get("downsample_factor", 2),
-            edge_mode=params.get("edge_mode", "crop"),
-            progress_logger=progress_callback,
-        )
-        _latest_events[request_id] = {"type": "complete", "data": {}}
-        queue.put(("complete", {}))
-    except Exception as exc:  # noqa: BLE001
-        _latest_events[request_id] = {"type": "error", "data": {"error": str(exc)}}
-        queue.put(("error", {"error": str(exc)}))
-
-
-def _run_batch_conversion(request_id: str, inputs: list[str], output_dir: str, params: dict):
-    queue = _progress_queues.get(request_id)
-    if queue is None:
-        return
-
-    total_files = len(inputs)
-    compression = params.get("compression", "lzw")
-    if compression == "none":
-        compression = None
-
-    try:
-        for idx, input_path in enumerate(inputs):
-            filename = Path(input_path).name
-            base = Path(input_path).with_suffix("")
-            out_filename = str(base.name) + ".ome.tiff"
-            output_path = str(Path(output_dir) / out_filename)
-
-            # Signal file start
-            queue.put(("progress", {"message": f"Starting {filename}...", "file": filename, "file_idx": idx, "total_files": total_files, "percent": 0}))
-            
-            def progress_callback(message: str, current_file=filename, i=idx):
-                percent = _estimate_percent(message)
-                event: dict = {"message": message, "file": current_file, "file_idx": i, "total_files": total_files}
-                if percent is not None:
-                    event["percent"] = percent
-                    event["overall_percent"] = ((i * 100) + percent) / total_files
-                _latest_events[request_id] = {"type": "progress", "data": event}
-                queue.put(("progress", event))
-
-            convert(
-                input_svs=input_path,
-                output_ometiff=output_path,
-                tile_size=params.get("tile_size", 512),
-                compression=compression,
-                num_levels=params.get("num_levels", 6),
-                downsample_factor=params.get("downsample_factor", 2),
-                edge_mode=params.get("edge_mode", "crop"),
-                progress_logger=progress_callback,
-            )
-            
-            queue.put(("progress", {"message": f"Completed {filename}", "file": filename, "file_idx": idx, "total_files": total_files, "percent": 100, "overall_percent": ((idx+1)*100)/total_files}))
-
-        _latest_events[request_id] = {"type": "complete", "data": {}}
-        queue.put(("complete", {}))
-    except Exception as exc:  # noqa: BLE001
-        _latest_events[request_id] = {"type": "error", "data": {"error": str(exc)}}
-        queue.put(("error", {"error": str(exc)}))
+def _estimate_percent(message: str):
+    """Thin wrapper kept for backward compatibility with tests."""
+    from svs_to_ometiff_gui.services import estimate_percent
+    return estimate_percent(message)
 
 
 # ---------------------------------------------------------------------------
@@ -212,15 +72,14 @@ def handle_inspect():
     if not path:
         return jsonify({"error": "path query parameter is required"}), 400
 
-    resolved = _resolve_path(path)
+    resolved = resolve_path(path)
     if resolved is None:
         return jsonify({"error": f"File not found: {path}"}), 404
 
     try:
-        info = inspect_svs(resolved)
+        info = _service.inspect_slide(resolved)
         # Add the resolved path so the frontend knows the real path
         info["resolved_path"] = resolved
-        # Ensure JSON-serializable types
         return jsonify(info)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 400
@@ -228,7 +87,7 @@ def handle_inspect():
 
 @app.route("/convert", methods=["POST"])
 def handle_convert():
-    if _state["active"]:
+    if _service.is_active:
         return jsonify({"error": "A conversion is already running."}), 409
 
     body = request.get_json(force=True)
@@ -238,7 +97,7 @@ def handle_convert():
         return jsonify({"error": "input_path is required"}), 400
 
     # Resolve the path: if it's a bare filename, search common directories
-    resolved = _resolve_path(input_path)
+    resolved = resolve_path(input_path)
     if resolved is None:
         return jsonify({
             "error": (
@@ -287,34 +146,26 @@ def handle_convert():
             except (ValueError, TypeError):
                 return jsonify({"error": f"{param_name} must be a positive integer"}), 400
 
-    request_id = str(uuid.uuid4())
-    queue: Queue = Queue()
-    _progress_queues[request_id] = queue
-    _state["active"] = True
-
-    params = {
-        "input_path": input_path,
-        "output_path": output_path,
-    }
-    config_keys = ("tile_size", "compression", "num_levels", "downsample_factor", "edge_mode")
-    for key in config_keys:
-        val = body.get(key)
-        if val is not None:
-            params[key] = val
-
-    thread = threading.Thread(
-        target=_run_conversion,
-        args=(request_id, params),
-        daemon=True,
+    # Build a typed ConversionJob
+    compression = body.get("compression", "lzw")
+    job = ConversionJob(
+        input_path=input_path,
+        output_path=output_path,
+        tile_size=int(body.get("tile_size", 512)),
+        compression=compression,
+        num_levels=int(body.get("num_levels", 6)),
+        downsample_factor=int(body.get("downsample_factor", 2)),
+        edge_mode=body.get("edge_mode", "crop"),
     )
-    thread.start()
+
+    request_id = _service.start_conversion(job)
 
     return jsonify({"request_id": request_id, "output_path": output_path})
 
 
 @app.route("/convert/batch", methods=["POST"])
 def handle_convert_batch():
-    if _state["active"]:
+    if _service.is_active:
         return jsonify({"error": "A conversion is already running."}), 409
 
     body = request.get_json(force=True)
@@ -323,11 +174,11 @@ def handle_convert_batch():
 
     if not inputs or not isinstance(inputs, list):
         return jsonify({"error": "inputs must be a non-empty list of paths"}), 400
-    
+
     if not output_dir:
         # Default to the directory of the first valid input
         if len(inputs) > 0:
-            first_resolved = _resolve_path(inputs[0])
+            first_resolved = resolve_path(inputs[0])
             if first_resolved:
                 output_dir = str(Path(first_resolved).parent)
             else:
@@ -338,7 +189,7 @@ def handle_convert_batch():
     # Resolve all inputs
     resolved_inputs = []
     for p in inputs:
-        resolved = _resolve_path(p)
+        resolved = resolve_path(p)
         if resolved is None:
             return jsonify({"error": f"File not found: {p}"}), 400
         if not resolved.lower().endswith(".svs"):
@@ -348,8 +199,8 @@ def handle_convert_batch():
     # Validate output dir
     out_dir_obj = Path(output_dir)
     if not out_dir_obj.is_dir() and not out_dir_obj.parent.is_dir():
-         return jsonify({"error": f"Invalid output directory: {output_dir}"}), 400
-    
+        return jsonify({"error": f"Invalid output directory: {output_dir}"}), 400
+
     out_dir_obj.mkdir(parents=True, exist_ok=True)
     if not os.access(output_dir, os.W_OK):
         return jsonify({"error": f"Output directory is not writable: {output_dir}"}), 400
@@ -365,37 +216,33 @@ def handle_convert_batch():
             except Exception:  # noqa: BLE001
                 return jsonify({"error": f"{int_val} must be positive int"}), 400
 
-    request_id = str(uuid.uuid4())
-    queue: Queue = Queue()
-    _progress_queues[request_id] = queue
-    _state["active"] = True
-
-    params = {}
-    config_keys = ("tile_size", "compression", "num_levels", "downsample_factor", "edge_mode")
-    for key in config_keys:
-        val = body.get(key)
-        if val is not None:
-            params[key] = val
-
-    thread = threading.Thread(
-        target=_run_batch_conversion,
-        args=(request_id, resolved_inputs, output_dir, params),
-        daemon=True,
+    # Build job template
+    compression = body.get("compression", "lzw")
+    job_template = ConversionJob(
+        input_path="",  # filled per-file
+        tile_size=int(body.get("tile_size", 512)),
+        compression=compression,
+        num_levels=int(body.get("num_levels", 6)),
+        downsample_factor=int(body.get("downsample_factor", 2)),
+        edge_mode=body.get("edge_mode", "crop"),
     )
-    thread.start()
+
+    request_id = _service.start_batch_conversion(
+        resolved_inputs, output_dir, job_template
+    )
 
     return jsonify({"request_id": request_id, "output_dir": output_dir, "count": len(resolved_inputs)})
 
 
 @app.route("/progress/<request_id>")
 def stream_progress(request_id: str):
-    queue = _progress_queues.get(request_id)
+    queue = _service.progress_queues.get(request_id)
     if queue is None:
         return jsonify({"error": "Invalid request_id"}), 404
 
     def generate():
         # Replay latest event on SSE reconnect
-        latest = _latest_events.get(request_id)
+        latest = _service.latest_events.get(request_id)
         if latest:
             event_type = latest["type"]
             data = latest["data"]
@@ -420,9 +267,7 @@ def stream_progress(request_id: str):
                     yield f"event: error\ndata: {json.dumps(data)}\n\n"
                     break
         finally:
-            _state["active"] = False
-            _progress_queues.pop(request_id, None)
-            _latest_events.pop(request_id, None)
+            _service.cleanup_job(request_id)
 
     return Response(
         generate(),
@@ -437,21 +282,9 @@ def stream_progress(request_id: str):
 
 @app.route("/browse_file")
 def handle_browse_file():
-    """Trigger a native file dialog on the server host to bypass browser path security."""
-    import subprocess
-    import sys
-    path = ""
+    """Trigger a native file dialog on the server host."""
     try:
-        if sys.platform == "darwin":
-            cmd = ['osascript', '-e', 'POSIX path of (choose file of type {"public.data"})']
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                path = res.stdout.strip()
-        else:
-            code = "import tkinter as tk, tkinter.filedialog as fd; root=tk.Tk(); root.withdraw(); root.call('wm','attributes','.','-topmost',True); print(fd.askopenfilename())"
-            res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
-            if res.returncode == 0:
-                path = res.stdout.strip()
+        path = _dialog.pick_file()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     return jsonify({"path": path})
@@ -459,23 +292,9 @@ def handle_browse_file():
 
 @app.route("/browse_files")
 def handle_browse_files():
-    """Trigger a native file dialog for multiple files on the server host."""
-    import subprocess
-    import sys
-    paths = []
+    """Trigger a native multi-file dialog on the server host."""
     try:
-        if sys.platform == "darwin":
-            # AppleScript to choose multiple files and return their POSIX paths separated by newline
-            script = 'set theFiles to choose file of type {"public.data"} with multiple selections allowed\nset thePaths to ""\nrepeat with aFile in theFiles\nset thePaths to thePaths & POSIX path of aFile & "\\n"\nend repeat\nreturn thePaths'
-            cmd = ['osascript', '-e', script]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                paths = [p for p in res.stdout.strip().split('\n') if p]
-        else:
-            code = "import tkinter as tk, tkinter.filedialog as fd; root=tk.Tk(); root.withdraw(); root.call('wm','attributes','.','-topmost',True); print('\\n'.join(fd.askopenfilenames()))"
-            res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
-            if res.returncode == 0:
-                paths = [p for p in res.stdout.strip().split('\n') if p]
+        paths = _dialog.pick_files()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     return jsonify({"paths": paths})
