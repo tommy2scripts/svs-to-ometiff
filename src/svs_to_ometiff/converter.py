@@ -136,7 +136,7 @@ def _stage_level0_memmap(
 ) -> np.memmap:
     height = int(metadata["height"])
     width = int(metadata["width"])
-    path = os.path.join(temp_dir, "pyramid_level_0.dat")
+    path = str(Path(temp_dir) / "pyramid_level_0.dat")
     level0 = np.memmap(path, dtype=np.uint8, mode="w+", shape=(height, width, 3))
 
     for item in iter_svs_rgb_tiles(
@@ -183,7 +183,7 @@ def convert(
 
     image_name = config.image_name
     if image_name is None:
-        image_name = os.path.splitext(os.path.basename(config.input_svs))[0]
+        image_name = Path(config.input_svs).stem
 
     metadata = read_svs_metadata(config.input_svs)
     if metadata["compression"] != 33007:

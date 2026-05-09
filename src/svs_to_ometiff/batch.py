@@ -10,6 +10,7 @@ import glob
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -102,8 +103,8 @@ def main(
     show_progress = verbose or not quiet
 
     # Resolve input files
-    if os.path.isdir(input_pattern):
-        files = sorted(glob.glob(os.path.join(input_pattern, "*.svs")))
+    if Path(input_pattern).is_dir():
+        files = sorted(glob.glob(str(Path(input_pattern) / "*.svs")))
     else:
         files = sorted(glob.glob(input_pattern, recursive=True))
 
@@ -112,7 +113,7 @@ def main(
         sys.exit(1)
 
     if output_dir is not None:
-        os.makedirs(output_dir, exist_ok=True)
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     compression_arg: Optional[str] = None if compression == "none" else compression
     tile_progress_interval = 1 if verbose else 20
@@ -126,13 +127,11 @@ def main(
     t_total = time.time()
 
     for i, svs_path in enumerate(files, start=1):
-        stem = os.path.splitext(os.path.basename(svs_path))[0]
+        stem = Path(svs_path).stem
         if output_dir is not None:
-            out_path = os.path.join(output_dir, f"{stem}.ome.tiff")
+            out_path = str(Path(output_dir) / f"{stem}.ome.tiff")
         else:
-            out_path = os.path.join(
-                os.path.dirname(svs_path), f"{stem}.ome.tiff"
-            )
+            out_path = str(Path(svs_path).parent / f"{stem}.ome.tiff")
 
         click.echo(f"[{i}/{len(files)}] {svs_path} -> {out_path}")
 
