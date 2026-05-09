@@ -212,7 +212,10 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
 
       <div class="tab-content" id="contentBatch">
         <div class="form-group">
-          <label for="batchInputs">Input SVS Paths (One per line)</label>
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <label for="batchInputs">Input SVS Paths (One per line)</label>
+            <button type="button" class="btn btn-secondary btn-sm" id="batchBrowseBtn" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;">Browse...</button>
+          </div>
           <textarea id="batchInputs" rows="6" style="width: 100%; padding: 0.5rem 0.7rem; background: var(--bg2); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text); font-size: 0.8rem; font-family: var(--mono); outline: none; resize: vertical; margin-bottom: 0.5rem;" placeholder="/path/to/slide1.svs&#10;/path/to/slide2.svs"></textarea>
         </div>
         <div class="form-group">
@@ -396,8 +399,43 @@ select { font-family: var(--font); cursor: pointer; appearance: auto; }
   inputPath.addEventListener('input', () => { updateOutput(); scheduleInspect(); });
   inputPath.addEventListener('focus', () => $('pathHint').classList.add('hidden'));
 
-  // Browse button
-  $('browseBtn').addEventListener('click', e => { e.preventDefault(); fileInput.click(); });
+  // Browse buttons using Native Dialog endpoints
+  $('browseBtn').addEventListener('click', e => { 
+    e.preventDefault(); 
+    const btn = $('browseBtn');
+    const prevText = btn.textContent;
+    btn.textContent = '...'; btn.disabled = true;
+    fetch('/browse_file').then(r => r.json()).then(d => {
+       btn.textContent = prevText; btn.disabled = false;
+       if (d.path) {
+           inputPath.value = d.path; updateOutput();
+           scheduleInspect(); $('pathHint').classList.add('hidden');
+       }
+    }).catch(err => {
+       btn.textContent = prevText; btn.disabled = false;
+       fileInput.click(); // Fallback to browser standard
+    });
+  });
+
+  const batchBrowseBtn = $('batchBrowseBtn');
+  if (batchBrowseBtn) {
+    batchBrowseBtn.addEventListener('click', e => {
+      e.preventDefault();
+      const prevText = batchBrowseBtn.textContent;
+      batchBrowseBtn.textContent = '...'; batchBrowseBtn.disabled = true;
+      fetch('/browse_files').then(r => r.json()).then(d => {
+         batchBrowseBtn.textContent = prevText; batchBrowseBtn.disabled = false;
+         if (d.paths && d.paths.length > 0) {
+             const existing = batchInputs.value.trim();
+             const toAdd = d.paths.join('\n');
+             batchInputs.value = existing ? existing + '\n' + toAdd : toAdd;
+             updateBatchStatus();
+         }
+      }).catch(err => {
+         batchBrowseBtn.textContent = prevText; batchBrowseBtn.disabled = false;
+      });
+    });
+  }
   fileInput.addEventListener('change', () => {
     const f = fileInput.files[0];
     if (f) { inputPath.value = f.name; updateOutput(); scheduleInspect(); $('pathHint').classList.remove('hidden'); }

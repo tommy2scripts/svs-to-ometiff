@@ -435,6 +435,52 @@ def stream_progress(request_id: str):
     )
 
 
+@app.route("/browse_file")
+def handle_browse_file():
+    """Trigger a native file dialog on the server host to bypass browser path security."""
+    import subprocess
+    import sys
+    path = ""
+    try:
+        if sys.platform == "darwin":
+            cmd = ['osascript', '-e', 'POSIX path of (choose file of type {"public.data"})']
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0:
+                path = res.stdout.strip()
+        else:
+            code = "import tkinter as tk, tkinter.filedialog as fd; root=tk.Tk(); root.withdraw(); root.call('wm','attributes','.','-topmost',True); print(fd.askopenfilename())"
+            res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+            if res.returncode == 0:
+                path = res.stdout.strip()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"path": path})
+
+
+@app.route("/browse_files")
+def handle_browse_files():
+    """Trigger a native file dialog for multiple files on the server host."""
+    import subprocess
+    import sys
+    paths = []
+    try:
+        if sys.platform == "darwin":
+            # AppleScript to choose multiple files and return their POSIX paths separated by newline
+            script = 'set theFiles to choose file of type {"public.data"} with multiple selections allowed\nset thePaths to ""\nrepeat with aFile in theFiles\nset thePaths to thePaths & POSIX path of aFile & "\\n"\nend repeat\nreturn thePaths'
+            cmd = ['osascript', '-e', script]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0:
+                paths = [p for p in res.stdout.strip().split('\n') if p]
+        else:
+            code = "import tkinter as tk, tkinter.filedialog as fd; root=tk.Tk(); root.withdraw(); root.call('wm','attributes','.','-topmost',True); print('\\n'.join(fd.askopenfilenames()))"
+            res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+            if res.returncode == 0:
+                paths = [p for p in res.stdout.strip().split('\n') if p]
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"paths": paths})
+
+
 @app.route("/open_folder", methods=["POST"])
 def handle_open_folder():
     body = request.get_json(force=True)
