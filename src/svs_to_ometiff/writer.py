@@ -11,6 +11,7 @@ import os
 import tempfile
 import time
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Optional
 from xml.sax.saxutils import quoteattr
 
@@ -154,15 +155,16 @@ def write_pyramidal_ometiff_from_levels(
     full_h, full_w = full_img.shape[:2]
     ome_xml = build_ome_xml(full_w, full_h, mpp, image_name, magnification=magnification)
 
-    output_dir = os.path.dirname(os.path.abspath(output_path)) or "."
-    output_name = os.path.basename(output_path)
+    out_path = Path(output_path).resolve()
+    output_dir = str(out_path.parent) or "."
+    output_name = out_path.name
     temp_handle = tempfile.NamedTemporaryFile(
         prefix=f".{output_name}.",
         suffix=".tmp",
         dir=output_dir,
         delete=False,
     )
-    temp_output_path = temp_handle.name
+    temp_output_path = Path(temp_handle.name)
     temp_handle.close()
 
     _log(verbose, progress_logger, "Writing pyramidal OME-TIFF with SubIFD linkage...")
@@ -172,7 +174,7 @@ def write_pyramidal_ometiff_from_levels(
     n_subifds = len(normalized_levels) - 1
 
     try:
-        with tifffile.TiffWriter(temp_output_path, bigtiff=True) as tif:
+        with tifffile.TiffWriter(str(temp_output_path), bigtiff=True) as tif:
             tif.write(
                 _iter_padded_tiles(full_img, tile_size),
                 shape=full_img.shape,
@@ -205,14 +207,14 @@ def write_pyramidal_ometiff_from_levels(
                     f"  Level {level_index}: {level.shape[1]}x{level.shape[0]} written",
                 )
 
-        os.replace(temp_output_path, output_path)
+        temp_output_path.replace(output_path)
     except Exception:
-        if os.path.exists(temp_output_path):
-            os.remove(temp_output_path)
+        if temp_output_path.exists():
+            temp_output_path.unlink()
         raise
 
     elapsed = time.time() - t0
-    size_gb = os.path.getsize(output_path) / 1e9
+    size_gb = Path(output_path).stat().st_size / 1e9
     _log(verbose, progress_logger, f"\nDone in {elapsed:.0f}s, size={size_gb:.2f} GB")
 
 

@@ -7,6 +7,7 @@ tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 
 import os
 import tempfile
+from pathlib import Path
 from typing import Any, Optional, Union
 
 import numpy as np
@@ -224,7 +225,7 @@ def convert(
             "WARNING: estimated peak RAM exceeds 30 GB; run on a high-memory host.",
         )
 
-    output_dir = os.path.dirname(os.path.abspath(config.output_ometiff)) or None
+    output_dir = str(Path(config.output_ometiff).resolve().parent) or None
     levels: list[np.ndarray] = []
     with tempfile.TemporaryDirectory(prefix="svs_to_ometiff_", dir=output_dir) as temp_dir:
         _log(config.verbose, config.progress_logger, "Decoding SVS tiles to disk-backed level 0...", phase="tile_decoding", percent=10.0)
@@ -276,7 +277,7 @@ def convert(
         finally:
             _close_memmaps(levels)
 
-    output_size = os.path.getsize(config.output_ometiff)
+    output_size = Path(config.output_ometiff).stat().st_size
     result: dict[str, object] = {
         **metadata,
         "estimated_peak_ram_bytes": estimated_ram,

@@ -324,11 +324,12 @@ def handle_open_folder():
     # Securely open folder without shell execution
     try:
         if sys.platform == "darwin":
-            subprocess.run(["open", folder_path], check=False)
+            subprocess.run(["open", "--", folder_path], check=False)
         elif sys.platform == "win32":
+            # explorer does not support --, but path validation prevents flag injection
             subprocess.run(["explorer", folder_path], check=False)
         else:
-            subprocess.run(["xdg-open", folder_path], check=False)
+            subprocess.run(["xdg-open", "--", folder_path], check=False)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Failed to open folder: {exc}"}), 500
 
