@@ -102,6 +102,7 @@ def _run_single_conversion_worker(request_id: str, kwargs: dict, m_queue):
         convert(**kwargs, progress_logger=progress_callback)
         m_queue.put((request_id, "complete", {}))
     except Exception as exc:  # noqa: BLE001
+        logging.exception("Single conversion worker failed")
         m_queue.put((request_id, "error", {"error": str(exc)}))
 
 
@@ -171,6 +172,7 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
 
         m_queue.put((request_id, "complete", {}))
     except Exception as exc:  # noqa: BLE001
+        logging.exception("Batch conversion worker failed")
         m_queue.put((request_id, "error", {"error": str(exc)}))
 
 

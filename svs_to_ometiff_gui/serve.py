@@ -35,10 +35,10 @@ logging.basicConfig(
 logger = logging.getLogger("svs_to_ometiff_gui")
 
 app = Flask(__name__)
+app.config["CONVERSION_SERVICE"] = ConversionService()
 
 # Singleton service instance
 _config = Config()
-_service = ConversionService()
 _dialog = get_dialog_strategy()
 
 WARNING_BANNER = """
@@ -91,17 +91,18 @@ def handle_inspect():
         return jsonify({"error": f"File not found: {path}"}), 404
 
     try:
-        info = _service.inspect_slide(resolved)
+        info = app.config["CONVERSION_SERVICE"].inspect_slide(resolved)
         # Add the resolved path so the frontend knows the real path
         info["resolved_path"] = resolved
         return jsonify(info)
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": str(exc)}), 400
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to inspect slide")
+        return jsonify({"error": "Failed to inspect slide"}), 400
 
 
 @app.route("/convert", methods=["POST"])
 def handle_convert():
-    if _service.is_active:
+    if app.config["CONVERSION_SERVICE"].is_active:
         return jsonify({"error": "A conversion is already running."}), 409
 
     body = request.get_json(force=True)
@@ -172,14 +173,14 @@ def handle_convert():
         edge_mode=body.get("edge_mode", "crop"),
     )
 
-    request_id = _service.start_conversion(job)
+    request_id = app.config["CONVERSION_SERVICE"].start_conversion(job)
 
     return jsonify({"request_id": request_id, "output_path": output_path})
 
 
 @app.route("/convert/batch", methods=["POST"])
 def handle_convert_batch():
-    if _service.is_active:
+    if app.config["CONVERSION_SERVICE"].is_active:
         return jsonify({"error": "A conversion is already running."}), 409
 
     body = request.get_json(force=True)
@@ -227,7 +228,7 @@ def handle_convert_batch():
                 v = int(val)
                 if v <= 0:
                     raise ValueError("Must be positive")
-            except Exception:  # noqa: BLE001
+            except (ValueError, TypeError):
                 return jsonify({"error": f"{int_val} must be positive int"}), 400
 
     # Build job template
@@ -241,7 +242,7 @@ def handle_convert_batch():
         edge_mode=body.get("edge_mode", "crop"),
     )
 
-    request_id = _service.start_batch_conversion(
+    request_id = app.config["CONVERSION_SERVICE"].start_batch_conversion(
         resolved_inputs, output_dir, job_template
     )
 
@@ -250,13 +251,13 @@ def handle_convert_batch():
 
 @app.route("/progress/<request_id>")
 def stream_progress(request_id: str):
-    queue = _service.progress_queues.get(request_id)
+    queue = app.config["CONVERSION_SERVICE"].progress_queues.get(request_id)
     if queue is None:
         return jsonify({"error": "Invalid request_id"}), 404
 
     def generate():
         # Replay latest event on SSE reconnect
-        latest = _service.latest_events.get(request_id)
+        latest = app.config["CONVERSION_SERVICE"].latest_events.get(request_id)
         if latest:
             event_type = latest["type"]
             data = latest["data"]
@@ -281,7 +282,7 @@ def stream_progress(request_id: str):
                     yield f"event: error\ndata: {json.dumps(data)}\n\n"
                     break
         finally:
-            _service.cleanup_job(request_id)
+            app.config["CONVERSION_SERVICE"].cleanup_job(request_id)
 
     return Response(
         generate(),
@@ -299,8 +300,9 @@ def handle_browse_file():
     """Trigger a native file dialog on the server host."""
     try:
         path = _dialog.pick_file()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        logger.exception("Browse file failed")
+        return jsonify({"error": "Failed to browse file"}), 500
     return jsonify({"path": path})
 
 
@@ -309,8 +311,9 @@ def handle_browse_files():
     """Trigger a native multi-file dialog on the server host."""
     try:
         paths = _dialog.pick_files()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        logger.exception("Browse files failed")
+        return jsonify({"error": "Failed to browse files"}), 500
     return jsonify({"paths": paths})
 
 
@@ -330,8 +333,9 @@ def handle_open_folder():
             subprocess.run(["explorer", folder_path], check=False)
         else:
             subprocess.run(["xdg-open", "--", folder_path], check=False)
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Failed to open folder: {exc}"}), 500
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to open folder")
+        return jsonify({"error": "Failed to open folder"}), 500
 
     return jsonify({"status": "ok"})
 
@@ -362,7 +366,7 @@ def health_check():
     return jsonify({
         "status": "ok",
         "version": "0.2.0",
-        "active_jobs": 1 if _service.is_active else 0,
+        "active_jobs": 1 if app.config["CONVERSION_SERVICE"].is_active else 0,
     })
 
 
