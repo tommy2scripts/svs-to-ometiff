@@ -9,13 +9,13 @@ multiples of the tile size.
 
 import math
 import re
-import sys
 import time
-from typing import Any, Iterator
+from typing import Any, Iterator, Optional
 
 import numpy as np
 import tifffile
 
+from svs_to_ometiff.utils import ProgressLogger, _log
 from svs_to_ometiff.yuyv_decoder import yuyv_to_rgb
 
 
@@ -50,6 +50,7 @@ def read_svs_metadata(svs_path: str) -> dict[str, Any]:
         except KeyError as exc:
             raise ValueError("Input SVS is missing ImageDescription metadata") from exc
         mpp = parse_mpp_from_description(desc)
+        magnification = parse_appmag_from_description(desc)
         try:
             compression = int(page0.tags["Compression"].value)
         except KeyError as exc:
@@ -72,6 +73,7 @@ def read_svs_metadata(svs_path: str) -> dict[str, Any]:
 
     return {
         "mpp": mpp,
+        "magnification": magnification,
         "width": img_w,
         "height": img_h,
         "src_tile_width": src_tile_w,
@@ -119,6 +121,32 @@ def parse_mpp_from_description(description: str) -> float:
     return mpp
 
 
+def parse_appmag_from_description(description: str) -> Optional[float]:
+    """
+    Extract objective magnification (AppMag) from an Aperio ImageDescription string.
+
+    The description may contain a pipe-delimited field like:
+        AppMag = 40
+
+    Args:
+        description: The ImageDescription tag value from the SVS.
+
+    Returns:
+        Magnification as a float, or ``None`` if not found.
+    """
+    match = re.search(r"(?i)\bAppMag\s*=\s*(?P<value>[^|]+)", description)
+    if match is None:
+        return None
+
+    value_text = match.group("value").strip()
+    try:
+        mag = float(value_text)
+    except ValueError:
+        return None
+
+    return mag if mag > 0 else None
+
+
 def _decode_tile_payload(
     raw: bytes,
     *,
@@ -148,6 +176,7 @@ def iter_svs_rgb_tiles(
     svs_path: str,
     *,
     progress_interval: int = 20,
+    progress_logger: Optional[ProgressLogger] = None,
 ) -> Iterator[dict[str, Any]]:
     """
     Yield decoded RGB source tiles with their placement coordinates.
@@ -176,11 +205,8 @@ def iter_svs_rgb_tiles(
             if progress_interval > 0 and ty % progress_interval == 0:
                 elapsed = time.time() - t_start
                 pct = 100 * ty / n_tiles_y
-                print(
-                    f"  Row {ty}/{n_tiles_y} ({pct:.0f}%) - {elapsed:.0f}s elapsed",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                msg = f"Tile row {ty} of {n_tiles_y} ({pct:.0f}%) - {elapsed:.0f}s elapsed"
+                _log(True, progress_logger, msg, phase="tile_decoding", current=ty, total=n_tiles_y, percent=pct)
 
             y0 = ty * src_tile_h
             y1 = min(y0 + src_tile_h, img_h)
@@ -212,13 +238,14 @@ def iter_svs_rgb_tiles(
 
     if progress_interval > 0:
         elapsed = time.time() - t_start
-        print(f"Tiles decoded in {elapsed:.0f}s")
+        _log(True, progress_logger, f"Tiles decoded in {elapsed:.0f}s", phase="tile_decoding_complete", percent=100.0)
 
 
 def read_svs_full_image(
     svs_path: str,
     *,
     progress_interval: int = 20,
+    progress_logger: Optional[ProgressLogger] = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read all tiles from an SVS file and assemble the full-resolution RGB image.
@@ -252,7 +279,9 @@ def read_svs_full_image(
     full_img = np.zeros((img_h, img_w, 3), dtype=np.uint8)
 
     t_start = time.time()
-    for item in iter_svs_rgb_tiles(svs_path, progress_interval=progress_interval):
+    for item in iter_svs_rgb_tiles(
+        svs_path, progress_interval=progress_interval, progress_logger=progress_logger
+    ):
         y0 = item["y0"]
         y1 = item["y1"]
         x0 = item["x0"]

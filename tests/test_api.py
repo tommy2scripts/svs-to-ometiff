@@ -12,7 +12,7 @@ import pytest
 import tifffile
 
 from svs_to_ometiff import ConvertConfig, convert
-from helpers import write_synthetic_33007_svs
+from tests.helpers import write_synthetic_33007_svs
 
 
 def test_convert_accepts_convertconfig(tmp_path: Path) -> None:

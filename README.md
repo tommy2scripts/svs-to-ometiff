@@ -1,187 +1,125 @@
-# svs-to-ometiff
+# svs-to-ometiff GUI
 
-Convert Aperio SVS files with private compression tag `33007` (raw YUYV YCbCr 4:2:2) into standards-compliant pyramidal OME BigTIFF.
-
+[![PyPI](https://img.shields.io/pypi/v/svs-to-ometiff-gui.svg)](https://pypi.org/project/svs-to-ometiff-gui/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Why this exists
-
-Some Aperio AT2/GT450 exports store image tiles with TIFF Compression tag `33007`. Those tiles are raw YUYV YCbCr 4:2:2 — not standard JPEG or JPEG 2000 — which breaks most whole-slide and spatial biology tools:
-
-| Tool | Failure mode |
-|------|-------------|
-| OpenSlide | `Unsupported TIFF compression: 33007` |
-| Bio-Formats / `bfconvert` | JPEG-family decode failure |
-| QuPath | Fails through OpenSlide/Bio-Formats backends |
-| libvips | Fails on unsupported compression `33007` |
-
-`svs-to-ometiff` decodes that YUYV tile payload and writes standards-compliant OME BigTIFF with RGB tiles and pyramid levels.
-
-## Validation status
-
-**This is an experimental, research-oriented tool.** It has been validated on a limited set of Aperio SVS files using compression code `33007`.
-
-Before using converted files in production workflows, verify output compatibility in your target tools (QuPath, Fiji/Bio-Formats, tifffile, napari, Xenium Explorer, or downstream spatial transcriptomics pipelines).
-
-See [docs/validation_protocol.md](docs/validation_protocol.md) for the current validation record and protocol.
-
-## Supported inputs
-
-**Supported:**
-- Aperio SVS files with TIFF compression code `33007`
-- RGB output as pyramidal OME BigTIFF with SubIFD linkage
-
-**Not supported:**
-- General SVS conversion (JPEG/JPEG 2000 variants — use OpenSlide or Bio-Formats)
-- Philips, Hamamatsu, Leica, or other WSI formats
-- Diagnostic or clinical use
-
-## Resource requirements
-
-The converter uses disk-backed temporary arrays (numpy memmaps) located beside the output file. This keeps peak RAM low but requires free disk space:
-
-- The final OME-TIFF
-- Temporary full-resolution RGB data (width × height × 3 bytes)
-- Temporary pyramid level data (smaller by ~factor² per level)
-
-A 40k × 40k pixel slide (~5 GB full-res RGB) will need roughly **10–15 GB** of temporary disk space during conversion and produce a ~5 GB OME-TIFF.
-
-For best performance, run conversions on a drive with a fast scratch SSD. A future `--tmp-dir` option is planned.
-
-## Installation
-
-```bash
-pip install svs-to-ometiff
-```
-
-**Compressed output** (LZW, zlib, deflate) works out of the box — the `imagecodecs` library is included as a core dependency.
-
-**GUI** (optional Flask-based web UI):
-
-```bash
-pip install "svs-to-ometiff[gui]"
-svs-to-ometiff-gui
-```
+A web-based GUI for converting Aperio SVS whole-slide images (compression `33007`) to pyramidal OME-TIFF. Powered by [`svs-to-ometiff`](https://pypi.org/project/svs-to-ometiff/).
 
 ## Quick start
 
 ```bash
-# Inspect source metadata first
-svs-to-ometiff-inspect input.svs
-
-# Default pyramidal conversion (3 levels, uncompressed)
-svs-to-ometiff input.svs output.ome.tiff
-
-# Single-resolution (no pyramid)
-svs-to-ometiff input.svs output.ome.tiff --num-levels 1
-
-# With LZW compression
-svs-to-ometiff input.svs output.ome.tiff --compression lzw
-```
-
-## Verify output
-
-```bash
-# Verify OME structure
-svs-to-ometiff-verify output.ome.tiff --min-levels 3
-```
-
-Successful output:
-```
-[PASS] output.ome.tiff
-OME: yes
-BigTIFF: yes
-Levels: 3
-Level shapes: [(39858, 39599, 3), (19929, 19799, 3), (9964, 9899, 3)]
-Dtype: uint8
-```
-
-## CLI reference
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--tile-size` | `512` | Output tile size (must be divisible by 16) |
-| `--compression` | `none` | `none`, `lzw`, `zlib`, or `deflate` |
-| `--num-levels` | `3` | Pyramid levels (1 for single-resolution) |
-| `--downsample-factor` | `2` | Pyramid spacing between levels |
-| `--edge-mode` | `crop` | `crop` or `pad` for odd edge tiles |
-| `--image-name` | input stem | OME Image name |
-| `--quiet` | — | Suppress progress output |
-| `--verbose` | — | Print detailed tile-level progress |
-
-## How it works
-
-1. **Metadata**: Reads TIFF headers to validate compression `33007` and extract dimensions, tile geometry, MPP.
-2. **Decode**: Stream-decodes YUYV tiles to RGB via BT.601 full-range conversion.
-3. **Stage**: Writes full-resolution RGB as a disk-backed memmap (low RAM).
-4. **Pyramid**: Builds lower resolution levels out-of-core by block averaging.
-5. **Write**: Writes tiled OME BigTIFF with SubIFD pyramid linkage.
-
-Write is **atomic** — a failed conversion won't overwrite an existing output.
-
-## Python API
-
-```python
-from svs_to_ometiff import convert, ConvertConfig
-
-# Preferred: typed config object
-config = ConvertConfig(
-    input_svs="slide.svs",
-    output_ometiff="slide.ome.tiff",
-    tile_size=512,
-    compression=None,
-    num_levels=3,
-)
-result = convert(config)
-print(f"Output: {result['output_path']} ({result['output_size_bytes'] / 1e9:.2f} GB)")
-
-# Legacy: positional arguments
-result = convert("slide.svs", "slide.ome.tiff", num_levels=3)
-```
-
-## GUI
-
-An experimental Flask-based web GUI is available:
-
-```bash
-pip install "svs-to-ometiff[gui]"
+pip install svs-to-ometiff-gui
 svs-to-ometiff-gui
+# Opens http://127.0.0.1:8765 in your browser
 ```
 
-The GUI provides a browser interface at `http://127.0.0.1:8765` with:
-- File path input (with auto-resolve for filenames)
-- Progress streaming via SSE
-- Configurable compression and pyramid settings
+## Features
 
-## Troubleshooting
+- **Slide Info Preview** — inspects SVS metadata (dimensions, MPP, magnification, compression) before conversion
+- **Batch Processing** — queue multiple SVS files with individual and overall progress
+- **Live Progress** — SVG circular progress ring and scrolling log console with real-time updates
+- **Advanced Settings** — tile size, compression, pyramid levels, downsample factor, edge mode
+- **Glassmorphism UI** — dark-mode interface with frosted glass panels and gradient accents
+- **Concurrent-safe** — process-pool isolation via `ProcessPoolExecutor`; failed jobs don't block the queue
 
-**"Error converting SVS file: svs-to-ometiff only supports Aperio compression 33007"**
-→ Your SVS uses standard JPEG (Compression 7) or JPEG 2000 (33003/33005). Use OpenSlide or Bio-Formats instead.
+## Supported inputs
 
-**"Failed to write compressed OME-TIFF because imagecodecs is missing"**
-→ Install `imagecodecs`: `pip install imagecodecs`. If compilation fails, use `--compression none`.
+**Supported:**
+- Aperio SVS files with TIFF compression code `33007` (raw YUYV YCbCr 4:2:2)
+- RGB output as pyramidal OME BigTIFF with SubIFD linkage
 
-**"Conversion fails with disk space error"**
-→ The converter needs temp space for full-resolution RGB data (~width × height × 3 bytes) plus pyramid levels. Ensure the output drive has 2–3× the final file size free. See [Resource requirements](#resource-requirements).
+**Not supported:**
+- JPEG/JPEG 2000 SVS variants — use OpenSlide or Bio-Formats for those
+- Philips, Hamamatsu, Leica, or other WSI formats
+- Diagnostic or clinical use
 
-## Development
+## Installation
+
+From PyPI (recommended):
+
+```bash
+pip install svs-to-ometiff-gui
+```
+
+From source:
 
 ```bash
 git clone https://github.com/tommy2scripts/svs-to-ometiff.git
 cd svs-to-ometiff
-pip install -e ".[dev]"
-python -m pytest
+pip install -e .
+```
+
+Dependencies: `svs-to-ometiff>=0.5.0`, `flask>=2.3`.
+
+## Usage
+
+```bash
+svs-to-ometiff-gui
+# or: python -m svs_to_ometiff_gui
+```
+
+This opens `http://127.0.0.1:8765` with the web interface.
+
+### Single file
+
+1. Drag-and-drop an `.svs` file, or paste the full path
+2. Slide metadata auto-populates (dimensions, compression, MPP)
+3. Output path auto-derived (same directory, `.ome.tiff` extension)
+4. Click **Convert**
+
+### Batch mode
+
+1. Switch to **Batch Mode** tab
+2. Paste multiple full paths (one per line)
+3. Optionally set an output directory
+4. Click **Convert** — files process sequentially with per-file progress
+
+### Advanced settings
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Tile Size | 1024 | Optimized for 10x Xenium |
+| Compression | zlib | Options: zlib, lzw, deflate, none |
+| Pyramid Levels | 6 | Includes full resolution |
+| Downsample Factor | 2 | Spacing between pyramid levels |
+| Edge Mode | crop | `crop` or `pad` for boundary tiles |
+
+## API endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Single-page web GUI |
+| `/inspect?path=<svs_path>` | GET | Slide metadata (JSON) |
+| `/convert` | POST | Start single conversion → `request_id` |
+| `/convert/batch` | POST | Start batch conversion → `request_id` |
+| `/progress/<request_id>` | GET | SSE stream of progress events |
+| `/open_folder` | POST | Opens output folder in OS file manager |
+
+## Troubleshooting
+
+**"Input SVS path does not exist"**
+→ Use the absolute path. On macOS: right-click file in Finder, hold Option, choose "Copy as Pathname."
+
+**"Only supports Aperio compression 33007"**
+→ Your SVS uses JPEG (Compression 7) or JPEG 2000 (33003/33005). Use OpenSlide or Bio-Formats.
+
+**Server fails to start (port in use)**
+→ Set `SVS_GUI_PORT=8766 svs-to-ometiff-gui` to use an alternate port.
+
+## Project structure
+
+```
+svs-to-ometiff/
+├── src/svs_to_ometiff/       # Core library + CLI
+├── svs_to_ometiff_gui/       # Flask app + services
+│   ├── templates/index.html  # Single-page UI
+│   └── static/               # CSS/JS assets
+├── tests/                    # pytest suite (58 tests)
+├── pyproject.toml
+└── README.md
 ```
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## Citation
-
-If you use this tool in published work, please cite the repository:
-
-```
-Tommy Tran. svs-to-ometiff: Convert Aperio compression-33007 SVS to
-pyramidal OME-TIFF. https://github.com/tommy2scripts/svs-to-ometiff
-```

@@ -1,71 +1,34 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "svs-to-ometiff"
-version = "0.5.0"
-description = "Convert Aperio SVS (compression 33007 / YUYV) to pyramidal OME-TIFF"
+name = "svs-to-ometiff-gui"
+version = "0.3.0"
+description = "Flask GUI for converting SVS whole-slide images to OME-TIFF."
 readme = "README.md"
-license = {text = "MIT"}
-authors = [
-    {name = "Tommy Tran and contributors", email = "ttran@biochain.com"}
-]
-keywords = [
-    "aperio", "svs", "ometiff", "whole-slide-imaging", "pathology",
-    "digital-pathology", "tiff", "pyramid", "scanner",
-]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Scientific/Engineering :: Bio-Informatics",
-    "Topic :: Scientific/Engineering :: Medical Science Apps.",
-    "Topic :: System :: Filesystems",
-]
 requires-python = ">=3.9"
 dependencies = [
-    "numpy>=1.21",
-    "tifffile>=2022.5.4",
-    "imagecodecs>=2022.2.22",
-    "click>=8.0",
+    "svs-to-ometiff>=0.5.0",
+    "flask>=2.3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "ruff>=0.1.0",
-    "psutil>=5.9",
-    "build>=1.0",
-    "twine>=5.0",
-]
-gui = [
-    "flask>=2.0",
+    "pytest-cov>=4.0",
 ]
 
 [project.scripts]
-svs-to-ometiff = "svs_to_ometiff.cli:main"
-svs-to-ometiff-verify = "svs_to_ometiff.verify:main"
-svs-to-ometiff-inspect = "svs_to_ometiff.inspect:main"
 svs-to-ometiff-gui = "svs_to_ometiff_gui.serve:main"
 
-[project.urls]
-Homepage = "https://github.com/tommy2scripts/svs-to-ometiff"
-Repository = "https://github.com/tommy2scripts/svs-to-ometiff"
-"Bug Tracker" = "https://github.com/tommy2scripts/svs-to-ometiff/issues"
+[tool.setuptools.packages.find]
+include = ["svs_to_ometiff_gui*"]
 
-[tool.ruff]
-line-length = 88
-target-version = "py39"
+[tool.setuptools.package-data]
+svs_to_ometiff_gui = ["templates/*.html", "static/**/*"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/svs_to_ometiff", "src/svs_to_ometiff_gui"]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-v --tb=short -p no:napari -p no:zarr"

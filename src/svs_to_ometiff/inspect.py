@@ -42,6 +42,7 @@ def inspect_svs(path: str) -> dict[str, object]:
         "src_tile_height": meta["src_tile_height"],
         "tile_count": meta["tile_count"],
         "mpp": meta["mpp"],
+        "magnification": meta.get("magnification"),
     }
 
 
@@ -63,6 +64,10 @@ def main(svs_path: str) -> None:
     click.echo(f"Tile size: {info['src_tile_width']} x {info['src_tile_height']}")
     mpp = info["mpp"]
     click.echo(f"MPP: {mpp}")
+    magnification = info.get("magnification")
+    if magnification is not None:
+        mag_display = int(magnification) if magnification == int(magnification) else magnification
+        click.echo(f"Magnification: {mag_display}X")
 
     if info["convertible"]:
         click.echo("Convertible: yes")

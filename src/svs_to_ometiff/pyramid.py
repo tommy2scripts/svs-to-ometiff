@@ -6,8 +6,8 @@ block-averaging downsampling. The classic API returns in-memory arrays; the
 streaming conversion path uses disk-backed memmaps for lower peak RAM.
 """
 
-import os
 import time
+from pathlib import Path
 from typing import Literal, Optional
 
 import numpy as np
@@ -139,7 +139,7 @@ def build_pyramid_memmaps(
     if edge_mode not in {"crop", "pad"}:
         raise ValueError(f"edge_mode must be 'crop' or 'pad', got {edge_mode!r}")
 
-    os.makedirs(temp_dir, exist_ok=True)
+    Path(temp_dir).mkdir(parents=True, exist_ok=True)
     levels: list[np.ndarray] = [base_level]
     factor = downsample_factor
     t0 = time.time()
@@ -154,7 +154,7 @@ def build_pyramid_memmaps(
                 f"{prev_w}x{prev_h} is too small for downsampling by {factor}"
             )
 
-        path = os.path.join(temp_dir, f"pyramid_level_{level_index}.dat")
+        path = str(Path(temp_dir) / f"pyramid_level_{level_index}.dat")
         dest = np.memmap(path, dtype=np.uint8, mode="w+", shape=(new_h, new_w, 3))
         crop_w = new_w * factor
 
