@@ -3,13 +3,16 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "svs-to-ometiff-gui"
-version = "0.3.0"
-description = "Flask GUI for converting SVS whole-slide images to OME-TIFF."
+name = "svs-to-ometiff"
+version = "0.5.0"
+description = "Convert Aperio SVS whole-slide images to OME-TIFF, with CLI and Flask GUI."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "svs-to-ometiff>=0.5.0",
+    "numpy>=1.21",
+    "tifffile>=2022.5.4",
+    "imagecodecs>=2022.2.22",
+    "click>=8.0",
     "flask>=2.3",
 ]
 
@@ -20,12 +23,19 @@ dev = [
 ]
 
 [project.scripts]
+svs-to-ometiff = "svs_to_ometiff.cli:main"
+svs-to-ometiff-batch = "svs_to_ometiff.batch:main"
+svs-to-ometiff-verify = "svs_to_ometiff.verify:main"
+svs-to-ometiff-inspect = "svs_to_ometiff.inspect:main"
 svs-to-ometiff-gui = "svs_to_ometiff_gui.serve:main"
 
 [tool.setuptools.packages.find]
-include = ["svs_to_ometiff_gui*"]
+where = ["src", "."]
+include = ["svs_to_ometiff*", "svs_to_ometiff_gui*"]
+namespaces = false
 
 [tool.setuptools.package-data]
+svs_to_ometiff = ["py.typed"]
 svs_to_ometiff_gui = ["templates/*.html", "static/**/*"]
 
 [tool.pytest.ini_options]

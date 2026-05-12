@@ -1,6 +1,6 @@
-# svs-to-ometiff GUI
+# svs-to-ometiff
 
-[![PyPI](https://img.shields.io/pypi/v/svs-to-ometiff-gui.svg)](https://pypi.org/project/svs-to-ometiff-gui/)
+[![PyPI](https://img.shields.io/pypi/v/svs-to-ometiff.svg)](https://pypi.org/project/svs-to-ometiff/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -9,7 +9,7 @@ A web-based GUI for converting Aperio SVS whole-slide images (compression `33007
 ## Quick start
 
 ```bash
-pip install svs-to-ometiff-gui
+pip install svs-to-ometiff
 svs-to-ometiff-gui
 # Opens http://127.0.0.1:8765 in your browser
 ```
@@ -39,7 +39,7 @@ svs-to-ometiff-gui
 From PyPI (recommended):
 
 ```bash
-pip install svs-to-ometiff-gui
+pip install svs-to-ometiff
 ```
 
 From source:
@@ -50,7 +50,7 @@ cd svs-to-ometiff
 pip install -e .
 ```
 
-Dependencies: `svs-to-ometiff>=0.5.0`, `flask>=2.3`.
+Runtime dependencies include `numpy`, `tifffile`, `imagecodecs`, `click`, and `flask>=2.3`.
 
 ## Usage
 

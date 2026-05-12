@@ -19,6 +19,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
 
+from svs_to_ometiff import __version__
 from svs_to_ometiff_gui.config import Config
 from svs_to_ometiff_gui.file_dialogs import get_dialog_strategy
 from svs_to_ometiff_gui.models import ConversionJob
@@ -365,7 +366,7 @@ def health_check():
     """Health check endpoint for monitoring."""
     return jsonify({
         "status": "ok",
-        "version": "0.3.0",
+        "version": __version__,
         "active_jobs": 1 if app.config["CONVERSION_SERVICE"].is_active else 0,
     })
 

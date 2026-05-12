@@ -37,6 +37,12 @@ class ConvertConfig:
         if self.downsample_factor < 2:
             raise ValueError("downsample_factor must be at least 2")
         if self.compression not in _SUPPORTED_COMPRESSION:
+            if self.compression == "jpeg2000":
+                raise ValueError(
+                    "compression='jpeg2000' is not supported by svs-to-ometiff "
+                    "0.5.0. Use 'zlib', 'lzw', 'deflate', or None/'none'; "
+                    "recompress the output separately if JPEG 2000 is required."
+                )
             raise ValueError(
                 f"compression must be one of {', '.join(repr(c) for c in _SUPPORTED_COMPRESSION)}, got {self.compression!r}"
             )

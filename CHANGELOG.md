@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preventing progress output from corrupting piped data.
 
 ### Changed
+- **Compression options**: Removed the previously advertised but unsupported
+  `jpeg2000` option from the CLI, batch CLI, and GUI compression selector.
+  Use `zlib`, `lzw`, `deflate`, or `none`; users who specifically need
+  JPEG 2000 should recompress outputs with a dedicated TIFF tool after
+  conversion.
 - **`estimate_peak_ram_bytes`**: Now actually uses `num_levels` and
   `downsample_factor` parameters to compute a more realistic estimate instead of
   returning a flat 1.2× multiplier.

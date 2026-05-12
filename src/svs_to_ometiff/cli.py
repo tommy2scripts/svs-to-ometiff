@@ -38,7 +38,7 @@ def _print_experimental_warning() -> None:
 @click.option(
     "--compression",
     default="zlib",
-    type=click.Choice(["zlib", "jpeg2000", "lzw", "deflate", "none"]),
+    type=click.Choice(["zlib", "lzw", "deflate", "none"]),
     show_default=True,
     help="TIFF compression scheme. Use 'none' for maximum compatibility.",
 )
