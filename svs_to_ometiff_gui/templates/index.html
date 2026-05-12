@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>svs-to-ometiff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="header">
+  <h1>svs-to-ometiff</h1>
+  <span class="version">v0.3.0 — GUI</span>
+</div>
+
+<div class="warning-bar">
+  <span>⚠️</span>
+  <span><strong>Experimental</strong> — not yet thoroughly tested. Always verify outputs independently.</span>
+</div>
+
+<div class="layout">
+  <!-- LEFT COLUMN -->
+  <div class="left-col">
+    <div class="panel">
+      <div class="tabs">
+        <button type="button" class="tab-btn active" id="tabSingle">Single File</button>
+        <button type="button" class="tab-btn" id="tabBatch">Batch Mode</button>
+      </div>
+
+      <div class="tab-content active" id="contentSingle">
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop SVS file or click to browse">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <div class="dropzone-text">Drop <strong>.svs</strong> file here or click to browse</div>
+        </div>
+        <input type="file" id="fileInput" accept=".svs" style="display:none">
+
+        <div class="form-group">
+          <label for="inputPath">Input SVS Path</label>
+          <div class="input-row">
+            <input type="text" id="inputPath" placeholder="/path/to/slide.svs" autocomplete="off">
+            <button type="button" class="btn btn-secondary btn-sm" id="browseBtn">Browse</button>
+          </div>
+        </div>
+        <div id="pathHint" class="hidden" style="margin:-0.5rem 0 0.5rem;font-size:0.72rem;color:var(--text-muted);">
+          Copied filename — paste the full path above (Finder → Right-click → Option → Copy as Pathname).
+        </div>
+
+        <!-- Slide Info Card -->
+        <div class="panel slide-info" id="slideInfo" style="background:var(--bg2);border-color:var(--glass-border);">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;">
+            Slide Info <span class="badge" id="convertibleBadge"></span>
+          </div>
+          <div class="slide-info-grid" id="slideInfoGrid"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="outputPath">Output Path</label>
+          <input type="text" id="outputPath" placeholder="Auto-derived from input" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="tab-content" id="contentBatch">
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <label for="batchInputs">Input SVS Paths (One per line)</label>
+            <button type="button" class="btn btn-secondary btn-sm" id="batchBrowseBtn" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;">Browse...</button>
+          </div>
+          <textarea id="batchInputs" rows="6" style="width: 100%; padding: 0.5rem 0.7rem; background: var(--bg2); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text); font-size: 0.8rem; font-family: var(--mono); outline: none; resize: vertical; margin-bottom: 0.5rem;" placeholder="/path/to/slide1.svs&#10;/path/to/slide2.svs"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="batchOutputDir">Output Directory (Optional)</label>
+          <input type="text" id="batchOutputDir" placeholder="Defaults to input file's directory" autocomplete="off">
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="settings-toggle" id="settingsToggle" tabindex="0" role="button" aria-expanded="false">
+        <span class="arrow" id="settingsArrow">▶</span> Advanced Settings
+      </div>
+      <div class="settings-body" id="settingsBody">
+        <div class="row">
+          <div class="form-group">
+            <label for="tileSize">Tile Size</label>
+            <select id="tileSize"><option value="256">256</option><option value="512">512</option><option value="1024" selected>1024</option></select>
+          </div>
+          <div class="form-group">
+            <label for="compression">Compression</label>
+            <select id="compression"><option value="zlib" selected>zlib</option><option value="jpeg2000">jpeg2000</option><option value="lzw">lzw</option><option value="deflate">deflate</option><option value="none">none</option></select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label for="numLevels">Pyramid Levels</label>
+            <select id="numLevels"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option><option value="7">7</option><option value="8">8</option></select>
+          </div>
+          <div class="form-group">
+            <label for="downsampleFactor">Downsample</label>
+            <select id="downsampleFactor"><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="edgeMode">Edge Mode</label>
+          <select id="edgeMode"><option value="crop" selected>crop</option><option value="pad">pad</option></select>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-primary" id="convertBtn" disabled>Convert</button>
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div class="right-col">
+    <!-- Progress Panel -->
+    <div class="panel" id="progressPanel">
+      <div class="panel-title">Progress</div>
+      <div id="idlePlaceholder" class="idle-placeholder">No conversion running</div>
+      <div id="progressContent" class="hidden">
+        <div class="progress-ring-container">
+          <div class="progress-ring">
+            <svg width="140" height="140" viewBox="0 0 140 140">
+              <defs>
+                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#3b82f6" />
+                  <stop offset="50%" stop-color="#8b5cf6" />
+                  <stop offset="100%" stop-color="#ec4899" />
+                </linearGradient>
+              </defs>
+              <circle class="track" cx="70" cy="70" r="60"/>
+              <circle class="fill" id="progressRingFill" cx="70" cy="70" r="60" stroke-dasharray="376.99" stroke-dashoffset="376.99"/>
+            </svg>
+            <div class="pct" id="progressPct">0%</div>
+          </div>
+          <div class="progress-msg" id="progressMsg">Starting...</div>
+        </div>
+      </div>
+      <div class="result-box result-ok" id="completionBox">
+        <span>✓ Conversion complete</span>
+        <button type="button" class="btn btn-secondary btn-sm" id="openFolderBtn">Open Folder</button>
+      </div>
+      <div class="result-box result-err" id="errorBox"></div>
+
+      <!-- Batch Queue -->
+      <div id="batchQueue" class="batch-queue hidden"></div>
+    </div>
+
+    <!-- Log Console -->
+    <div class="panel" style="margin-top:1rem;">
+      <div class="panel-title">Log</div>
+      <div class="log-console" id="logConsole">
+        <div class="log-line" style="color:var(--text-muted);">Waiting for conversion...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
