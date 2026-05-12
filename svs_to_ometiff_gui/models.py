@@ -4,7 +4,7 @@ Replaces raw dictionaries with typed dataclasses for conversion jobs
 and slide metadata, improving code clarity and enabling validation.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 

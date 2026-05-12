@@ -59,14 +59,6 @@ def main(svs_path: str) -> None:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
-    if not info["convertible"]:
-        click.echo(
-            f"Error: unsupported compression {info['compression']} "
-            f"(only {SUPPORTED_COMPRESSION} is convertible)",
-            err=True,
-        )
-        sys.exit(1)
-
     click.echo(f"Compression: {info['compression']}")
     click.echo(f"Dimensions: {info['width']} x {info['height']}")
     click.echo(f"Tile size: {info['src_tile_width']} x {info['src_tile_height']}")
@@ -76,4 +68,12 @@ def main(svs_path: str) -> None:
     if magnification is not None:
         mag_display = int(magnification) if magnification == int(magnification) else magnification
         click.echo(f"Magnification: {mag_display}X")
-    click.echo("Convertible: yes")
+
+    if info["convertible"]:
+        click.echo("Convertible: yes")
+    else:
+        click.echo(
+            f"Convertible: no (only {SUPPORTED_COMPRESSION} is supported)",
+            err=True,
+        )
+        sys.exit(1)

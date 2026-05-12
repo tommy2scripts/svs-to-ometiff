@@ -1,8 +1,6 @@
 """Tests for _resolve_path — the path resolution logic in serve.py."""
 
-import os
 from pathlib import Path
-from unittest.mock import patch
 
 from svs_to_ometiff_gui.serve import _resolve_path
 

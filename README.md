@@ -1,104 +1,125 @@
 # svs-to-ometiff GUI
 
-A premium web-based graphical user interface for converting SVS whole-slide images to OME-TIFF format using the `svs_to_ometiff` library.
+[![PyPI](https://img.shields.io/pypi/v/svs-to-ometiff-gui.svg)](https://pypi.org/project/svs-to-ometiff-gui/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Experimental:** This GUI is experimental and not yet thoroughly tested. Use with caution on production data. Always verify outputs.
+A web-based GUI for converting Aperio SVS whole-slide images (compression `33007`) to pyramidal OME-TIFF. Powered by [`svs-to-ometiff`](https://pypi.org/project/svs-to-ometiff/).
+
+## Quick start
+
+```bash
+pip install svs-to-ometiff-gui
+svs-to-ometiff-gui
+# Opens http://127.0.0.1:8765 in your browser
+```
 
 ## Features
 
-- **Slide Info Preview** — Automatically inspects SVS metadata (dimensions, MPP, magnification, compression, tile count) before conversion
-- **Batch Processing** — Queue multiple SVS files for sequential processing with individual and overall progress tracking
-- **Two-Column Layout** — Configuration on the left, live progress/batch queue on the right
-- **Circular Progress Ring** — SVG-based percentage display with real-time updates
-- **Live Log Console** — Real-time scrolling log output from the converter
-- **Glassmorphism Design** — Premium dark-mode UI with frosted glass panels, gradient accents, and smooth animations
-- **Advanced Settings** — Tile size, compression, pyramid levels, downsample factor, edge mode
-- **Inter + JetBrains Mono** — Modern typography from Google Fonts
-- **Responsive** — Collapses to single-column on narrow viewports
+- **Slide Info Preview** — inspects SVS metadata (dimensions, MPP, magnification, compression) before conversion
+- **Batch Processing** — queue multiple SVS files with individual and overall progress
+- **Live Progress** — SVG circular progress ring and scrolling log console with real-time updates
+- **Advanced Settings** — tile size, compression, pyramid levels, downsample factor, edge mode
+- **Glassmorphism UI** — dark-mode interface with frosted glass panels and gradient accents
+- **Concurrent-safe** — process-pool isolation via `ProcessPoolExecutor`; failed jobs don't block the queue
 
-## Requirements
+## Supported inputs
 
-- Python 3.9+
-- `pip`
+**Supported:**
+- Aperio SVS files with TIFF compression code `33007` (raw YUYV YCbCr 4:2:2)
+- RGB output as pyramidal OME BigTIFF with SubIFD linkage
+
+**Not supported:**
+- JPEG/JPEG 2000 SVS variants — use OpenSlide or Bio-Formats for those
+- Philips, Hamamatsu, Leica, or other WSI formats
+- Diagnostic or clinical use
 
 ## Installation
 
-Install from the project directory:
+From PyPI (recommended):
 
 ```bash
-cd /path/to/svs-to-ometiff
+pip install svs-to-ometiff-gui
+```
+
+From source:
+
+```bash
+git clone https://github.com/tommy2scripts/svs-to-ometiff.git
+cd svs-to-ometiff
 pip install -e .
 ```
 
-This installs the GUI package and its runtime dependencies:
-
-- `svs-to-ometiff>=0.2.0`
-- `flask>=2.3`
+Dependencies: `svs-to-ometiff>=0.5.0`, `flask>=2.3`.
 
 ## Usage
 
-Run the GUI with the console script:
-
 ```bash
 svs-to-ometiff-gui
+# or: python -m svs_to_ometiff_gui
 ```
 
-Or run it as a Python module:
+This opens `http://127.0.0.1:8765` with the web interface.
 
-```bash
-python -m svs_to_ometiff_gui
-```
+### Single file
 
-This will:
-1.  Print an experimental warning banner.
-2.  Automatically open http://127.0.0.1:8765 in your default browser.
-3.  Start the Flask development server.
+1. Drag-and-drop an `.svs` file, or paste the full path
+2. Slide metadata auto-populates (dimensions, compression, MPP)
+3. Output path auto-derived (same directory, `.ome.tiff` extension)
+4. Click **Convert**
 
-### Web Interface
+### Batch mode
 
-1.  **Select Mode:** Choose between **Single File** or **Batch Mode** at the top.
-2.  **For Single File:**
-    *   **Drag & drop** an `.svs` file onto the drop zone, or click to browse.
-    *   The **Input SVS Path** field will be populated with the filename — paste the full path.
-    *   A **Slide Info** card will automatically appear showing slide metadata.
-    *   The **Output Path** is auto-derived (same directory, `.ome.tiff` extension).
-3.  **For Batch Mode:**
-    *   Paste multiple full paths (one per line) into the **Input SVS Paths** text area.
-    *   (Optional) Set an **Output Directory** for all converted files.
-4.  (Optional) Click **Advanced Settings** to adjust:
-    *   **Tile Size** (default: 1024, optimized for 10x Xenium)
-    *   **Compression** (default: zlib; options: zlib, jpeg2000, lzw, deflate, none)
-    *   **Pyramid Levels** (default: 6)
-    *   **Downsample Factor** (default: 2)
-    *   **Edge Mode** (default: crop; options: crop, pad)
-5.  Click **Convert** to start the conversion.
-6.  Monitor progress via the **circular progress ring**, **batch queue list**, and **log console**.
-7.  When complete, click **Open Folder** to reveal the output.
+1. Switch to **Batch Mode** tab
+2. Paste multiple full paths (one per line)
+3. Optionally set an output directory
+4. Click **Convert** — files process sequentially with per-file progress
 
-### API Endpoints
+### Advanced settings
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Tile Size | 1024 | Optimized for 10x Xenium |
+| Compression | zlib | Options: zlib, lzw, deflate, none |
+| Pyramid Levels | 6 | Includes full resolution |
+| Downsample Factor | 2 | Spacing between pyramid levels |
+| Edge Mode | crop | `crop` or `pad` for boundary tiles |
+
+## API endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Serves the single-page GUI |
-| `/inspect?path=<svs_path>` | GET | Returns slide metadata (dimensions, MPP, magnification, etc.) |
-| `/convert` | POST | Starts a single conversion, returns a `request_id` |
-| `/convert/batch` | POST | Starts sequential batch conversion of multiple paths, returns a `request_id` |
-| `/progress/<request_id>` | GET | SSE stream of conversion progress events (supports both single and batch modes) |
-| `/open_folder` | POST | Opens the output folder in the OS file manager |
+| `/` | GET | Single-page web GUI |
+| `/inspect?path=<svs_path>` | GET | Slide metadata (JSON) |
+| `/convert` | POST | Start single conversion → `request_id` |
+| `/convert/batch` | POST | Start batch conversion → `request_id` |
+| `/progress/<request_id>` | GET | SSE stream of progress events |
+| `/open_folder` | POST | Opens output folder in OS file manager |
 
-## Project Structure
+## Troubleshooting
+
+**"Input SVS path does not exist"**
+→ Use the absolute path. On macOS: right-click file in Finder, hold Option, choose "Copy as Pathname."
+
+**"Only supports Aperio compression 33007"**
+→ Your SVS uses JPEG (Compression 7) or JPEG 2000 (33003/33005). Use OpenSlide or Bio-Formats.
+
+**Server fails to start (port in use)**
+→ Set `SVS_GUI_PORT=8766 svs-to-ometiff-gui` to use an alternate port.
+
+## Project structure
 
 ```
 svs-to-ometiff/
-├── src/svs_to_ometiff/       # Core conversion library and CLI
-├── svs_to_ometiff_gui/       # Flask web application and background services
-│   ├── templates/index.html  # Single-page GUI
-│   └── static/               # Assets (CSS/JS)
-├── tests/                    # Pytest suite
+├── src/svs_to_ometiff/       # Core library + CLI
+├── svs_to_ometiff_gui/       # Flask app + services
+│   ├── templates/index.html  # Single-page UI
+│   └── static/               # CSS/JS assets
+├── tests/                    # pytest suite (58 tests)
 ├── pyproject.toml
 └── README.md
 ```
 
 ## License
 
-Same as the `svs_to_ometiff` project.
+MIT. See [LICENSE](LICENSE).

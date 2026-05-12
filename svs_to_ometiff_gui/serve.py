@@ -365,7 +365,7 @@ def health_check():
     """Health check endpoint for monitoring."""
     return jsonify({
         "status": "ok",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "active_jobs": 1 if app.config["CONVERSION_SERVICE"].is_active else 0,
     })
 

@@ -3,7 +3,6 @@
 import json
 import os
 
-import pytest
 
 
 class TestConfig:
@@ -32,7 +31,7 @@ class TestHealthCheck:
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data["status"] == "ok"
-        assert data["version"] == "0.2.0"
+        assert data["version"] == "0.3.0"
         assert "active_jobs" in data
 
     def test_health_shows_no_active_jobs(self, client):

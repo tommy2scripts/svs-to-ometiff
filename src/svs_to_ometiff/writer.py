@@ -7,7 +7,6 @@ declares the sub-resolution levels, enabling pyramid detection in readers
 that support SubIFD-linked pyramids.
 """
 
-import os
 import tempfile
 import time
 from collections.abc import Sequence

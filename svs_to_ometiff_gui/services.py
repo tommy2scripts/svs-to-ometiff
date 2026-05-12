@@ -4,9 +4,7 @@ This module owns the background conversion threads, progress queues,
 and path resolution logic. Flask routes delegate to this service.
 """
 
-import json
 import logging
-import os
 import re
 import threading
 import uuid

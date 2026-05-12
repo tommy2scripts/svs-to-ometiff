@@ -13,12 +13,11 @@ Modules:
     cli           — Click-based command-line interface
 """
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 __all__ = [
     "yuyv_to_rgb",
     "read_svs_full_image",
     "parse_mpp_from_description",
-    "parse_appmag_from_description",
     "build_pyramid",
     "write_pyramidal_ometiff",
     "build_ome_xml",
@@ -30,7 +29,7 @@ __all__ = [
 ]
 
 from svs_to_ometiff.yuyv_decoder import yuyv_to_rgb
-from svs_to_ometiff.tile_reader import parse_appmag_from_description, parse_mpp_from_description, read_svs_full_image
+from svs_to_ometiff.tile_reader import parse_mpp_from_description, read_svs_full_image
 from svs_to_ometiff.pyramid import build_pyramid
 from svs_to_ometiff.writer import write_pyramidal_ometiff, build_ome_xml
 from svs_to_ometiff.config import ConvertConfig

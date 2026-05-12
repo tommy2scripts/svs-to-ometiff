@@ -6,7 +6,6 @@ block-averaging downsampling. The classic API returns in-memory arrays; the
 streaming conversion path uses disk-backed memmaps for lower peak RAM.
 """
 
-import os
 import time
 from pathlib import Path
 from typing import Literal, Optional

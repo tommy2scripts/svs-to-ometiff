@@ -130,7 +130,7 @@ def main(
             tile_progress_interval=tile_progress_interval,
         )
     except Exception as exc:
-        click.echo(f"Error converting SVS file: {exc}", err=True)
+        click.echo(f"Error: {type(exc).__name__}: {exc}", err=True)
         sys.exit(1)
 
 

@@ -1,2 +1,2 @@
-svs-to-ometiff>=0.2.0
+svs-to-ometiff>=0.5.0
 flask>=2.3

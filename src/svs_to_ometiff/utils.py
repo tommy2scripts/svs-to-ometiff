@@ -2,6 +2,7 @@
 General-purpose utilities for svs-to-ometiff.
 """
 
+import sys
 from collections.abc import Callable
 from typing import Any, Optional
 
@@ -12,6 +13,6 @@ def _log(verbose: bool, logger: Optional[ProgressLogger], message: str, **kwargs
     if not verbose:
         return
     if logger is None:
-        print(message)
+        print(message, file=sys.stderr, flush=True)
     else:
         logger(message, **kwargs)

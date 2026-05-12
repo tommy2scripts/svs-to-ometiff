@@ -7,7 +7,6 @@ on one file do not stop the rest.
 """
 
 import glob
-import os
 import sys
 import time
 from pathlib import Path
