@@ -9,6 +9,7 @@ multiples of the tile size.
 
 import math
 import re
+import sys
 import time
 from typing import Any, Iterator
 
@@ -176,7 +177,9 @@ def iter_svs_rgb_tiles(
                 elapsed = time.time() - t_start
                 pct = 100 * ty / n_tiles_y
                 print(
-                    f"  Row {ty}/{n_tiles_y} ({pct:.0f}%) - {elapsed:.0f}s elapsed"
+                    f"  Row {ty}/{n_tiles_y} ({pct:.0f}%) - {elapsed:.0f}s elapsed",
+                    file=sys.stderr,
+                    flush=True,
                 )
 
             y0 = ty * src_tile_h

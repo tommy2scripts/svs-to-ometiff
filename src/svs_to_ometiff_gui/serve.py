@@ -20,6 +20,7 @@ from typing import Optional
 
 from flask import Flask, request, jsonify, Response, render_template
 
+from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff.converter import convert
 
 app = Flask(__name__)
@@ -113,15 +114,23 @@ def _run_conversion(request_id: str, params: dict):
         queue.put(("progress", event))
 
     try:
-        convert(
+        # Normalize: the CLI/Config API uses None for uncompressed,
+        # but the GUI sends the string "none"
+        compression = params.get("compression", "none")
+        compression = None if compression == "none" else compression
+
+        config = ConvertConfig(
             input_svs=params["input_path"],
             output_ometiff=params.get("output_path"),
-            tile_size=params.get("tile_size", 512),
-            compression=params.get("compression", "none"),
-            num_levels=params.get("num_levels", 3),
-            downsample_factor=params.get("downsample_factor", 2),
+            tile_size=int(params.get("tile_size", 512)),
+            compression=compression,
+            num_levels=int(params.get("num_levels", 3)),
+            downsample_factor=int(params.get("downsample_factor", 2)),
+            verbose=True,
             progress_logger=progress_callback,
         )
+
+        convert(config)
         _latest_events[request_id] = {"type": "complete", "data": {}}
         queue.put(("complete", {}))
     except Exception as exc:

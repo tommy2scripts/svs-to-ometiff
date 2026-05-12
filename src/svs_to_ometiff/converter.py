@@ -46,8 +46,10 @@ def estimate_peak_ram_bytes(
     The optimized path stages full-resolution and lower pyramid levels on disk
     as memmaps, so expected heap/RSS pressure is dominated by source tiles,
     downsampling strips, TIFF writer tile buffers, and OS page-cache behavior.
-    The estimate intentionally tracks the validation target of roughly 1.2x the
-    full-resolution RGB byte count rather than the old full-pyramid footprint.
+
+    The estimate accounts for the full-resolution RGB footprint plus roughly
+    15 % of the previous level per lower pyramid level (levels shrink by
+    factor² each step, so level N+1 is level-N area / factor²).
     """
     if width <= 0 or height <= 0:
         raise ValueError(f"Image dimensions must be positive, got {width}x{height}")
@@ -58,7 +60,16 @@ def estimate_peak_ram_bytes(
             f"downsample_factor must be at least 2, got {downsample_factor}"
         )
 
-    return int(width * height * 3 * 1.2)
+    full_res_bytes = width * height * 3
+    # Add ~15 % overhead per lower level, weighted by level size
+    # Level N+1 is level-N area / downsample_factor^2
+    pyramid_overhead = 0.0
+    level_area = full_res_bytes
+    for _ in range(1, num_levels):
+        level_area //= downsample_factor * downsample_factor
+        pyramid_overhead += level_area * 0.15
+
+    return int(full_res_bytes + pyramid_overhead)
 
 
 def _coerce_convert_config(
@@ -123,9 +134,10 @@ def _close_memmaps(levels: list[np.ndarray]) -> None:
     for level in levels:
         if isinstance(level, np.memmap):
             level.flush()
-            mmap = getattr(level, "_mmap", None)
-            if mmap is not None:
-                mmap.close()
+            try:
+                level.close()
+            except AttributeError:
+                pass  # numpy <1.x compatibility (no close() method)
 
 
 def _stage_level0_memmap(

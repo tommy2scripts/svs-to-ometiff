@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-11
+
+### Fixed
+- **GUI conversion call**: Fixed `TypeError` caused by passing keyword arguments
+  directly to `convert()`. GUI now constructs a `ConvertConfig` and normalizes
+  `"none"` compression to `None` before calling `convert()`.
+- **`_close_memmaps`**: Replaced fragile `._mmap` private-attribute access with
+  `level.close()`, fixing compatibility across numpy versions.
+- **`iter_svs_rgb_tiles` progress**: Prints now go to stderr instead of stdout,
+  preventing progress output from corrupting piped data.
+
+### Changed
+- **`estimate_peak_ram_bytes`**: Now actually uses `num_levels` and
+  `downsample_factor` parameters to compute a more realistic estimate instead of
+  returning a flat 1.2× multiplier.
+- **`svs-to-ometiff-inspect`**: Now prints metadata for non-33007 files before
+  reporting them as non-convertible, making the tool useful for discovery.
+
+### Added
+- **PEP 561 `py.typed` markers**: Both packages are now discoverable by type
+  checkers (mypy, pyright).
+- **Formal test files**: `tests/test_api.py` (6 tests for public API shape) and
+  `tests/test_gui_params.py` (5 tests for parameter normalization and edge
+  cases).
+- **Packaging**: `CITATION.cff`, `CONTRIBUTING.md`, `SECURITY.md` added.
+- **README**: Complete rewrite with validation status, supported/unsupported
+  inputs, resource requirements, troubleshooting section, verified output
+  example, and separate sections for CLI, API, and GUI usage.
+
 ## [0.4.1] - 2026-05-07
 
 ### Changed

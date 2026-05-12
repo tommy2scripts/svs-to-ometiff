@@ -172,9 +172,9 @@ class TestRunConversion:
 
         captured_callback = {}
 
-        def fake_convert(**kwargs):
-            captured_callback["cb"] = kwargs["progress_logger"]
-            kwargs["progress_logger"]("step 1")
+        def fake_convert(config):
+            captured_callback["cb"] = config.progress_logger
+            config.progress_logger("step 1")
 
         with patch("svs_to_ometiff_gui.serve.convert", side_effect=fake_convert):
             _run_conversion(req_id, {"input_path": "x.svs"})
@@ -194,8 +194,8 @@ class TestRunConversion:
         q: Queue = Queue()
         serve_mod._progress_queues[req_id] = q
 
-        def fake_convert(**kwargs):
-            kwargs["progress_logger"]("step 2", percent=42.0)
+        def fake_convert(config):
+            config.progress_logger("step 2", percent=42.0)
 
         with patch("svs_to_ometiff_gui.serve.convert", side_effect=fake_convert):
             _run_conversion(req_id, {"input_path": "x.svs"})
@@ -213,8 +213,8 @@ class TestRunConversion:
         q: Queue = Queue()
         serve_mod._progress_queues[req_id] = q
 
-        def fake_convert(**kwargs):
-            kwargs["progress_logger"]("running")
+        def fake_convert(config):
+            config.progress_logger("running")
 
         with patch("svs_to_ometiff_gui.serve.convert", side_effect=fake_convert):
             _run_conversion(req_id, {"input_path": "x.svs"})
@@ -228,18 +228,19 @@ class TestRunConversion:
         q: Queue = Queue()
         serve_mod._progress_queues[req_id] = q
 
-        call_kwargs = {}
+        call_config = {}
 
-        def fake_convert(**kwargs):
-            call_kwargs.update(kwargs)
+        def fake_convert(config):
+            call_config["config"] = config
 
         with patch("svs_to_ometiff_gui.serve.convert", side_effect=fake_convert):
             _run_conversion(req_id, {"input_path": "x.svs"})
 
-        assert call_kwargs["tile_size"] == 512
-        assert call_kwargs["compression"] == "none"
-        assert call_kwargs["num_levels"] == 3
-        assert call_kwargs["downsample_factor"] == 2
+        config = call_config["config"]
+        assert config.tile_size == 512
+        assert config.compression is None  # "none" → None
+        assert config.num_levels == 3
+        assert config.downsample_factor == 2
 
 
 # ===========================================================================
@@ -443,10 +444,10 @@ class TestHandleConvert:
         """Passes tile_size, compression, num_levels, downsample_factor to convert."""
         f = tmp_path / "slide.svs"
         f.write_bytes(b"")
-        call_kwargs = {}
+        call_config = {}
 
-        def capture(**kwargs):
-            call_kwargs.update(kwargs)
+        def capture(config):
+            call_config["config"] = config
 
         with patch("svs_to_ometiff_gui.serve.convert", side_effect=capture):
             resp = self._post(
@@ -463,10 +464,11 @@ class TestHandleConvert:
         thread = serve_mod._conversion_thread
         if thread is not None:
             thread.join(timeout=2.0)
-        assert call_kwargs.get("tile_size") == 256
-        assert call_kwargs.get("compression") == "lzw"
-        assert call_kwargs.get("num_levels") == 2
-        assert call_kwargs.get("downsample_factor") == 3
+        config = call_config["config"]
+        assert config.tile_size == 256
+        assert config.compression == "lzw"
+        assert config.num_levels == 2
+        assert config.downsample_factor == 3
 
 
 # ===========================================================================
