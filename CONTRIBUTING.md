@@ -15,7 +15,7 @@ python -m pytest
 
 ## Before submitting
 
-- [ ] `ruff check src/ tests/` passes
+- [ ] `ruff check .` passes
 - [ ] `python -m pytest -q` passes
 - [ ] New functionality includes tests
 - [ ] Public API changes are reflected in `__init__.py` exports

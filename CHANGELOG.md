@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-05-12
+
+### Fixed
+- **Unified package release**: Publishes the corrected `svs-to-ometiff`
+  package with both the core library/CLI and Flask GUI in one wheel.
+- **CI dependencies**: Adds Ruff to the development extra so CI linting works
+  from a clean install.
+- **Source install docs**: Replaces the stale self-dependency in
+  `requirements.txt` with the actual runtime dependencies.
+- **GUI defaults**: Aligns fallback conversion defaults with the documented
+  `zlib` GUI default.
+
 ## [0.5.0] - 2026-05-11
 
 ### Fixed

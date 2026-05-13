@@ -77,7 +77,7 @@ def _estimate_percent(message: str):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", version=__version__)
 
 
 @app.route("/inspect")
@@ -163,7 +163,7 @@ def handle_convert():
                 return jsonify({"error": f"{param_name} must be a positive integer"}), 400
 
     # Build a typed ConversionJob
-    compression = body.get("compression", "lzw")
+    compression = body.get("compression", _config.DEFAULT_COMPRESSION)
     job = ConversionJob(
         input_path=input_path,
         output_path=output_path,
@@ -233,7 +233,7 @@ def handle_convert_batch():
                 return jsonify({"error": f"{int_val} must be positive int"}), 400
 
     # Build job template
-    compression = body.get("compression", "lzw")
+    compression = body.get("compression", _config.DEFAULT_COMPRESSION)
     job_template = ConversionJob(
         input_path="",  # filled per-file
         tile_size=int(body.get("tile_size", 512)),

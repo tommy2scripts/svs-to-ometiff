@@ -1,2 +1,5 @@
-svs-to-ometiff>=0.5.0
+numpy>=1.21
+tifffile>=2022.5.4
+imagecodecs>=2022.2.22
+click>=8.0
 flask>=2.3
