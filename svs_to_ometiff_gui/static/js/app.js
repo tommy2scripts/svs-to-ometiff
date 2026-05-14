@@ -60,6 +60,25 @@
     convertBtn.disabled = !v;
   }
 
+  function hasAbsoluteLikePath(v) {
+    return /^(?:[a-zA-Z]:[\/]|\\|\/)/.test(v);
+  }
+
+  function showBrowserPathHint() {
+    $('pathHint').textContent = 'Browser only provided filename. Use Browse or paste full path.';
+    $('pathHint').classList.remove('hidden');
+  }
+
+  function applyBrowserFileSelection(file) {
+    if (!file) return;
+    const candidate = ((typeof file.path === 'string' && file.path) || file.name || '').trim();
+    inputPath.value = candidate;
+    updateOutput();
+    scheduleInspect();
+    if (!hasAbsoluteLikePath(candidate)) showBrowserPathHint();
+    else $('pathHint').classList.add('hidden');
+  }
+
   // Inspect slide on path change (debounced)
   function scheduleInspect() {
     clearTimeout(inspectTimer);
@@ -103,7 +122,9 @@
   }
 
   inputPath.addEventListener('input', () => { updateOutput(); scheduleInspect(); });
-  inputPath.addEventListener('focus', () => $('pathHint').classList.add('hidden'));
+  inputPath.addEventListener('focus', () => {
+    if (hasAbsoluteLikePath(inputPath.value.trim())) $('pathHint').classList.add('hidden');
+  });
 
   // Browse buttons using Native Dialog endpoints
   $('browseBtn').addEventListener('click', e => { 
@@ -144,7 +165,7 @@
   }
   fileInput.addEventListener('change', () => {
     const f = fileInput.files[0];
-    if (f) { inputPath.value = f.name; updateOutput(); scheduleInspect(); $('pathHint').classList.remove('hidden'); }
+    if (f) applyBrowserFileSelection(f);
   });
 
   // Drag & drop
@@ -153,10 +174,21 @@
   dropzone.addEventListener('drop', e => {
     e.preventDefault(); dropzone.classList.remove('drag-over');
     const f = e.dataTransfer.files;
-    if (f && f.length) { inputPath.value = f[0].name; updateOutput(); scheduleInspect(); $('pathHint').classList.remove('hidden'); }
+    if (f && f.length) applyBrowserFileSelection(f[0]);
   });
-  dropzone.addEventListener('click', () => fileInput.click());
-  dropzone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  dropzone.addEventListener('click', () => {
+    const browseBtn = $('browseBtn');
+    if (browseBtn) browseBtn.click();
+    else fileInput.click();
+  });
+  dropzone.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const browseBtn = $('browseBtn');
+      if (browseBtn) browseBtn.click();
+      else fileInput.click();
+    }
+  });
 
   // Settings toggle
   settingsToggle.addEventListener('click', () => {
