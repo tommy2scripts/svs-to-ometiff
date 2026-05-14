@@ -6,6 +6,9 @@ block-averaging downsampling. The classic API returns in-memory arrays; the
 streaming conversion path uses disk-backed memmaps for lower peak RAM.
 """
 
+import gc
+import logging
+import shutil
 import time
 from pathlib import Path
 from typing import Literal, Optional
@@ -188,11 +191,6 @@ def build_pyramid_memmaps(
     _log(verbose, progress_logger, f"Pyramid built in {time.time() - t0:.0f}s")
     return levels
 
-
-import gc
-import logging
-import time as _time_mod
-
 # Maximum seconds to spend retrying temp directory cleanup
 _CLEANUP_RETRY_DELAYS = [0.5, 1.0, 2.0]
 
@@ -232,7 +230,6 @@ def cleanup_pyramid_memmaps(
     gc.collect()
 
     # 3. Retry directory removal with backoff
-    import shutil
     for attempt in range(max_retries + 1):
         try:
             if Path(temp_dir).exists():
@@ -240,7 +237,7 @@ def cleanup_pyramid_memmaps(
             return None
         except PermissionError:
             if attempt < max_retries:
-                _time_mod.sleep(_CLEANUP_RETRY_DELAYS[min(attempt, len(_CLEANUP_RETRY_DELAYS) - 1)])
+                time.sleep(_CLEANUP_RETRY_DELAYS[min(attempt, len(_CLEANUP_RETRY_DELAYS) - 1)])
                 gc.collect()
                 continue
             msg = (

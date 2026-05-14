@@ -19,6 +19,7 @@ from svs_to_ometiff.writer import (
     write_pyramidal_ometiff_from_levels as write_pyramidal_ometiff,
 )
 
+import tempfile
 
 _LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
     "tile_size": 512,
@@ -241,9 +242,8 @@ def convert(
     levels: list[np.ndarray] = []
 
     # Determine temp directory base: prefer config.temp_dir, then system temp (avoid network drives)
-    import tempfile as _tempfile_module
     _temp_base = config.temp_dir if config.temp_dir else None
-    temp_dir_obj = _tempfile_module.TemporaryDirectory(prefix="svs_to_ometiff_", dir=_temp_base)
+    temp_dir_obj = tempfile.TemporaryDirectory(prefix="svs_to_ometiff_", dir=_temp_base)
     temp_dir = temp_dir_obj.name
     _log(config.verbose, config.progress_logger, f"Temp dir: {temp_dir}", phase="setup", percent=5.0)
 
