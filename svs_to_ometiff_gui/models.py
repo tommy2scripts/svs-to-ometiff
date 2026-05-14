@@ -19,6 +19,7 @@ class ConversionJob:
     num_levels: int = 6
     downsample_factor: int = 2
     edge_mode: str = "crop"
+    temp_dir: Optional[str] = None
     request_id: str = ""
 
     def to_converter_kwargs(self) -> dict:
@@ -31,6 +32,7 @@ class ConversionJob:
             "num_levels": self.num_levels,
             "downsample_factor": self.downsample_factor,
             "edge_mode": self.edge_mode,
+            "temp_dir": self.temp_dir or None,
         }
 
 

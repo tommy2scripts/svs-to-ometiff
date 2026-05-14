@@ -164,6 +164,7 @@ def handle_convert():
 
     # Build a typed ConversionJob
     compression = body.get("compression", _config.DEFAULT_COMPRESSION)
+    temp_dir = (body.get("temp_dir") or "").strip() or None
     job = ConversionJob(
         input_path=input_path,
         output_path=output_path,
@@ -172,6 +173,7 @@ def handle_convert():
         num_levels=int(body.get("num_levels", 6)),
         downsample_factor=int(body.get("downsample_factor", 2)),
         edge_mode=body.get("edge_mode", "crop"),
+        temp_dir=temp_dir,
     )
 
     request_id = app.config["CONVERSION_SERVICE"].start_conversion(job)
@@ -234,6 +236,7 @@ def handle_convert_batch():
 
     # Build job template
     compression = body.get("compression", _config.DEFAULT_COMPRESSION)
+    temp_dir = (body.get("temp_dir") or "").strip() or None
     job_template = ConversionJob(
         input_path="",  # filled per-file
         tile_size=int(body.get("tile_size", 512)),
@@ -241,6 +244,7 @@ def handle_convert_batch():
         num_levels=int(body.get("num_levels", 6)),
         downsample_factor=int(body.get("downsample_factor", 2)),
         edge_mode=body.get("edge_mode", "crop"),
+        temp_dir=temp_dir,
     )
 
     request_id = app.config["CONVERSION_SERVICE"].start_batch_conversion(
