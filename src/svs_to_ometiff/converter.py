@@ -5,7 +5,10 @@ The public ``convert`` function mirrors the CLI pipeline: read Aperio 33007
 tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 """
 
+import gc
+import shutil
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -30,6 +33,7 @@ _LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
     "verbose": True,
     "tile_progress_interval": 20,
     "progress_logger": None,
+    "temp_dir": None,
 }
 
 
@@ -130,14 +134,48 @@ def _raise_write_error_with_context(exc: Exception, compression: Optional[str]) 
     raise exc
 
 
-def _close_memmaps(levels: list[np.ndarray]) -> None:
+def _flush_and_release_memmaps(levels: list[np.ndarray]) -> None:
     for level in levels:
         if isinstance(level, np.memmap):
             level.flush()
-            try:
-                level.close()
-            except AttributeError:
-                pass  # numpy <1.x compatibility (no close() method)
+            mm = getattr(level, "_mmap", None)
+            if mm is not None:
+                mm.close()
+
+
+def _cleanup_temp_dir(
+    temp_dir: str,
+    *,
+    output_ometiff: str,
+    write_succeeded: bool,
+    verbose: bool,
+    progress_logger: Optional[object],
+) -> None:
+    max_attempts = 6
+    delay_seconds = 0.2
+    last_error: Optional[PermissionError] = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            shutil.rmtree(temp_dir)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            if attempt < max_attempts:
+                time.sleep(delay_seconds)
+                continue
+            break
+
+    output_exists = Path(output_ometiff).exists()
+    if write_succeeded and output_exists and last_error is not None:
+        _log(
+            verbose,
+            progress_logger,
+            f"WARNING: Could not remove temporary directory '{temp_dir}': {last_error}",
+        )
+        return
+
+    if last_error is not None:
+        raise last_error
 
 
 def _stage_level0_memmap(
@@ -236,9 +274,12 @@ def convert(
             "WARNING: estimated peak RAM exceeds 30 GB; run on a high-memory host.",
         )
 
-    output_dir = str(Path(config.output_ometiff).resolve().parent) or None
+    temp_base_dir = config.temp_dir if config.temp_dir is not None else tempfile.gettempdir()
     levels: list[np.ndarray] = []
-    with tempfile.TemporaryDirectory(prefix="svs_to_ometiff_", dir=output_dir) as temp_dir:
+    level0: Optional[np.memmap] = None
+    temp_dir = tempfile.mkdtemp(prefix="svs_to_ometiff_", dir=temp_base_dir)
+    write_succeeded = False
+    try:
         _log(config.verbose, config.progress_logger, "Decoding SVS tiles to disk-backed level 0...", phase="tile_decoding", percent=10.0)
         level0 = _stage_level0_memmap(config, metadata, temp_dir)
 
@@ -283,10 +324,22 @@ def convert(
                 verbose=config.verbose,
                 progress_logger=config.progress_logger,
             )
+            write_succeeded = True
         except Exception as exc:
             _raise_write_error_with_context(exc, config.compression)
         finally:
-            _close_memmaps(levels)
+            _flush_and_release_memmaps(levels)
+            levels.clear()
+            level0 = None
+            gc.collect()
+    finally:
+        _cleanup_temp_dir(
+            temp_dir,
+            output_ometiff=config.output_ometiff,
+            write_succeeded=write_succeeded,
+            verbose=config.verbose,
+            progress_logger=config.progress_logger,
+        )
 
     output_size = Path(config.output_ometiff).stat().st_size
     result: dict[str, object] = {
