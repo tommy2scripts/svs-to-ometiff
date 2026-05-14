@@ -12,9 +12,9 @@ from svs_to_ometiff.config import ConvertConfig
 def _simulate_gui_params(
     input_path: str = "/fake/input.svs",
     output_path: str = "/fake/output.ome.tiff",
-    tile_size: str = "1024",
-    compression: str = "zlib",
-    num_levels: str = "6",
+    tile_size: str = "512",
+    compression: str = "none",
+    num_levels: str = "3",
     downsample_factor: str = "2",
     edge_mode: str = "crop",
 ) -> ConvertConfig:
@@ -32,13 +32,10 @@ def _simulate_gui_params(
     )
 
 
-def test_gui_params_defaults_match_public_gui_defaults() -> None:
-    """GUI defaults match the documented public conversion profile."""
+def test_gui_params_default_compression_is_none() -> None:
+    """GUI sends compression='none' by default → ConvertConfig stores None."""
     config = _simulate_gui_params()
-    assert config.tile_size == 1024
-    assert config.compression == "zlib"
-    assert config.num_levels == 6
-    assert config.downsample_factor == 2
+    assert config.compression is None
 
 
 def test_gui_params_explicit_lzw_compression() -> None:
@@ -65,3 +62,33 @@ def test_gui_params_edge_mode_default_crop() -> None:
     """GUI edge_mode defaults to crop."""
     config = _simulate_gui_params(edge_mode="crop")
     assert config.edge_mode == "crop"
+
+
+def test_gui_params_default_tile_size_is_512() -> None:
+    """GUI default tile_size changed to 512 in this PR (was 1024)."""
+    config = _simulate_gui_params()
+    assert config.tile_size == 512
+
+
+def test_gui_params_default_num_levels_is_3() -> None:
+    """GUI default num_levels changed to 3 in this PR (was 6)."""
+    config = _simulate_gui_params()
+    assert config.num_levels == 3
+
+
+def test_gui_params_none_compression_stored_as_none() -> None:
+    """Compression='none' string is normalized to Python None before ConvertConfig."""
+    config = _simulate_gui_params(compression="none")
+    assert config.compression is None
+
+
+def test_gui_params_zlib_compression_stored_as_string() -> None:
+    """Compression='zlib' passes through as the string 'zlib'."""
+    config = _simulate_gui_params(compression="zlib")
+    assert config.compression == "zlib"
+
+
+def test_gui_params_deflate_compression_stored_as_string() -> None:
+    """Compression='deflate' passes through as the string 'deflate'."""
+    config = _simulate_gui_params(compression="deflate")
+    assert config.compression == "deflate"
