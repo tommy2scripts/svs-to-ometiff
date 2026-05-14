@@ -65,30 +65,30 @@ def test_gui_params_edge_mode_default_crop() -> None:
 
 
 def test_gui_params_default_tile_size_is_512() -> None:
-    """GUI default tile_size changed to 512 in this PR (was 1024)."""
+    """GUI default tile_size is 512 (not 1024)."""
     config = _simulate_gui_params()
     assert config.tile_size == 512
 
 
 def test_gui_params_default_num_levels_is_3() -> None:
-    """GUI default num_levels changed to 3 in this PR (was 6)."""
+    """GUI default num_levels is 3 (matches _simulate_gui_params default)."""
     config = _simulate_gui_params()
     assert config.num_levels == 3
 
 
-def test_gui_params_none_compression_stored_as_none() -> None:
-    """Compression='none' string is normalized to Python None before ConvertConfig."""
+def test_gui_params_compression_none_string_normalizes_to_python_none() -> None:
+    """'none' string must normalize to Python None before ConvertConfig."""
     config = _simulate_gui_params(compression="none")
     assert config.compression is None
 
 
-def test_gui_params_zlib_compression_stored_as_string() -> None:
-    """Compression='zlib' passes through as the string 'zlib'."""
+def test_gui_params_zlib_compression_preserved() -> None:
+    """'zlib' string must pass through as 'zlib' to ConvertConfig."""
     config = _simulate_gui_params(compression="zlib")
     assert config.compression == "zlib"
 
 
-def test_gui_params_deflate_compression_stored_as_string() -> None:
-    """Compression='deflate' passes through as the string 'deflate'."""
+def test_gui_params_deflate_compression_preserved() -> None:
+    """'deflate' string must pass through as 'deflate' to ConvertConfig."""
     config = _simulate_gui_params(compression="deflate")
     assert config.compression == "deflate"

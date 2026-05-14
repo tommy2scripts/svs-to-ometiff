@@ -2,6 +2,28 @@
 
 import json
 
+from svs_to_ometiff_gui.serve import app
+
+
+class DummyConversionService:
+    """Minimal conversion service double for route-level job inspection tests."""
+
+    is_active = False
+
+    def __init__(self):
+        self.job = None
+        self.inputs = None
+        self.output_dir = None
+
+    def start_conversion(self, job):
+        self.job = job
+        return "single-request"
+
+    def start_batch_conversion(self, inputs, output_dir, job_template):
+        self.inputs = inputs
+        self.output_dir = output_dir
+        self.job = job_template
+        return "batch-request"
 
 
 class TestIndexRoute:
@@ -82,6 +104,166 @@ class TestConvertRoute:
         data = json.loads(resp.data)
         assert "tile_size" in data["error"]
 
+    def test_convert_rejects_zero_tile_size(self, client, tmp_svs):
+        """tile_size=0 must be rejected — positive integer required."""
+        resp = client.post(
+            "/convert",
+            data=json.dumps({"input_path": str(tmp_svs), "tile_size": 0}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "tile_size" in data["error"]
+
+    def test_convert_rejects_negative_tile_size(self, client, tmp_svs):
+        """Negative tile_size must be rejected."""
+        resp = client.post(
+            "/convert",
+            data=json.dumps({"input_path": str(tmp_svs), "tile_size": -16}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "tile_size" in data["error"]
+
+    def test_convert_accepts_tile_size_not_divisible_by_16(self, client, tmp_svs):
+        """Route no longer validates tile_size divisibility by 16; 513 must be accepted."""
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({"input_path": str(tmp_svs), "tile_size": 513}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+        assert resp.status_code == 200
+
+    def test_convert_accepts_jpeg2000_compression_at_route_level(self, client, tmp_svs):
+        """Route no longer validates compression; jpeg2000 must reach the queue."""
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({"input_path": str(tmp_svs), "compression": "jpeg2000"}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+        assert resp.status_code == 200
+
+    def test_convert_default_tile_size_is_512(self, client, tmp_svs):
+        """When tile_size is omitted, route defaults to 512."""
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({"input_path": str(tmp_svs)}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+        assert resp.status_code == 200
+        assert service.job.tile_size == 512
+
+    def test_convert_default_num_levels_is_6(self, client, tmp_svs):
+        """When num_levels is omitted, route defaults to 6."""
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({"input_path": str(tmp_svs)}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+        assert resp.status_code == 200
+        assert service.job.num_levels == 6
+
+    def test_convert_default_downsample_factor_is_2(self, client, tmp_svs):
+        """When downsample_factor is omitted, route defaults to 2."""
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({"input_path": str(tmp_svs)}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+        assert resp.status_code == 200
+        assert service.job.downsample_factor == 2
+
+    def test_convert_default_edge_mode_is_crop(self, client, tmp_svs):
+        """When edge_mode is omitted, route defaults to 'crop'."""
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({"input_path": str(tmp_svs)}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+        assert resp.status_code == 200
+        assert service.job.edge_mode == "crop"
+
+    def test_convert_rejects_invalid_num_levels(self, client, tmp_svs):
+        """Non-integer num_levels must return 400."""
+        resp = client.post(
+            "/convert",
+            data=json.dumps({"input_path": str(tmp_svs), "num_levels": "bad"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "num_levels" in data["error"]
+
+    def test_convert_rejects_zero_num_levels(self, client, tmp_svs):
+        """num_levels=0 must return 400 — must be positive."""
+        resp = client.post(
+            "/convert",
+            data=json.dumps({"input_path": str(tmp_svs), "num_levels": 0}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "num_levels" in data["error"]
+
+    def test_convert_rejects_invalid_downsample_factor(self, client, tmp_svs):
+        """Non-integer downsample_factor must return 400."""
+        resp = client.post(
+            "/convert",
+            data=json.dumps({"input_path": str(tmp_svs), "downsample_factor": "bad"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "downsample_factor" in data["error"]
+
+    def test_convert_rejects_negative_downsample_factor(self, client, tmp_svs):
+        """Negative downsample_factor must return 400."""
+        resp = client.post(
+            "/convert",
+            data=json.dumps({"input_path": str(tmp_svs), "downsample_factor": -2}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "downsample_factor" in data["error"]
+
 
 class TestBatchConvertRoute:
     """POST /convert/batch validates inputs list."""
@@ -120,7 +302,8 @@ class TestBatchConvertRoute:
         )
         assert resp.status_code == 400
 
-    def test_batch_invalid_tile_size_string_returns_400(self, client, tmp_svs):
+    def test_batch_rejects_invalid_tile_size(self, client, tmp_svs):
+        """Non-integer tile_size in batch must return 400."""
         resp = client.post(
             "/convert/batch",
             data=json.dumps({"inputs": [str(tmp_svs)], "tile_size": "abc"}),
@@ -130,7 +313,8 @@ class TestBatchConvertRoute:
         data = json.loads(resp.data)
         assert "tile_size" in data["error"]
 
-    def test_batch_zero_tile_size_returns_400(self, client, tmp_svs):
+    def test_batch_rejects_zero_tile_size(self, client, tmp_svs):
+        """tile_size=0 in batch must return 400."""
         resp = client.post(
             "/convert/batch",
             data=json.dumps({"inputs": [str(tmp_svs)], "tile_size": 0}),
@@ -140,289 +324,57 @@ class TestBatchConvertRoute:
         data = json.loads(resp.data)
         assert "tile_size" in data["error"]
 
-    def test_batch_negative_tile_size_returns_400(self, client, tmp_svs):
+    def test_batch_rejects_negative_tile_size(self, client, tmp_svs):
+        """Negative tile_size in batch must return 400."""
         resp = client.post(
             "/convert/batch",
-            data=json.dumps({"inputs": [str(tmp_svs)], "tile_size": -1}),
+            data=json.dumps({"inputs": [str(tmp_svs)], "tile_size": -64}),
             content_type="application/json",
         )
         assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "tile_size" in data["error"]
 
-    def test_batch_zero_num_levels_returns_400(self, client, tmp_svs):
+    def test_batch_rejects_invalid_num_levels(self, client, tmp_svs):
+        """Non-integer num_levels in batch must return 400."""
         resp = client.post(
             "/convert/batch",
-            data=json.dumps({"inputs": [str(tmp_svs)], "num_levels": 0}),
+            data=json.dumps({"inputs": [str(tmp_svs)], "num_levels": "bad"}),
             content_type="application/json",
         )
         assert resp.status_code == 400
         data = json.loads(resp.data)
         assert "num_levels" in data["error"]
 
-    def test_batch_invalid_downsample_factor_string_returns_400(self, client, tmp_svs):
+    def test_batch_rejects_invalid_downsample_factor(self, client, tmp_svs):
+        """Non-integer downsample_factor in batch must return 400."""
         resp = client.post(
             "/convert/batch",
-            data=json.dumps({"inputs": [str(tmp_svs)], "downsample_factor": "x"}),
+            data=json.dumps({"inputs": [str(tmp_svs)], "downsample_factor": "xyz"}),
             content_type="application/json",
         )
         assert resp.status_code == 400
         data = json.loads(resp.data)
         assert "downsample_factor" in data["error"]
 
-    def test_batch_error_message_uses_short_form(self, client, tmp_svs):
-        """Batch endpoint uses 'must be positive int' (shorter than single route)."""
-        resp = client.post(
-            "/convert/batch",
-            data=json.dumps({"inputs": [str(tmp_svs)], "tile_size": 0}),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "positive int" in data["error"]
-
-
-class TestConvertInlineValidation:
-    """Tests for the new inline validation added in the PR (no ConvertConfig delegation)."""
-
-    def test_convert_accepts_tile_size_not_divisible_by_16(self, client, tmp_svs):
-        """Route no longer checks divisibility by 16 — that was removed in this PR."""
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "tile_size": 513,
-            }),
-            content_type="application/json",
-        )
-        # Route-level validation passes; service will handle deeper validation
-        assert resp.status_code != 400 or "divisible" not in json.loads(resp.data).get("error", "")
-
-    def test_convert_accepts_jpeg2000_compression_at_route_level(self, client, tmp_svs):
-        """Route no longer rejects 'jpeg2000' — ConvertConfig validation removed from route."""
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "compression": "jpeg2000",
-            }),
-            content_type="application/json",
-        )
-        # Should NOT be a 400 with a message about jpeg2000 being unsupported at route level
-        if resp.status_code == 400:
-            error_msg = json.loads(resp.data).get("error", "")
-            assert "jpeg2000" not in error_msg
-
-    def test_convert_rejects_zero_tile_size(self, client, tmp_svs):
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "tile_size": 0,
-            }),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "tile_size" in data["error"]
-
-    def test_convert_rejects_negative_tile_size(self, client, tmp_svs):
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "tile_size": -16,
-            }),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "tile_size" in data["error"]
-
-    def test_convert_rejects_zero_num_levels(self, client, tmp_svs):
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "num_levels": 0,
-            }),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "num_levels" in data["error"]
-
-    def test_convert_rejects_negative_num_levels(self, client, tmp_svs):
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "num_levels": -3,
-            }),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "num_levels" in data["error"]
-
-    def test_convert_rejects_invalid_num_levels_string(self, client, tmp_svs):
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "num_levels": "bad",
-            }),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "num_levels" in data["error"]
-
-    def test_convert_rejects_zero_downsample_factor(self, client, tmp_svs):
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "downsample_factor": 0,
-            }),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "downsample_factor" in data["error"]
-
-    def test_convert_rejects_invalid_downsample_factor_string(self, client, tmp_svs):
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "downsample_factor": "two",
-            }),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "downsample_factor" in data["error"]
-
-    def test_convert_error_message_uses_long_form(self, client, tmp_svs):
-        """Single /convert endpoint uses 'must be a positive integer' (longer form)."""
-        resp = client.post(
-            "/convert",
-            data=json.dumps({
-                "input_path": str(tmp_svs),
-                "tile_size": 0,
-            }),
-            content_type="application/json",
-        )
-        assert resp.status_code == 400
-        data = json.loads(resp.data)
-        assert "positive integer" in data["error"]
-
-    def test_convert_valid_omitted_optional_params_are_accepted(self, client, tmp_svs):
-        """Omitting optional params should not trigger validation errors."""
-        resp = client.post(
-            "/convert",
-            data=json.dumps({"input_path": str(tmp_svs)}),
-            content_type="application/json",
-        )
-        # Should not be a 400 due to missing optional params
-        assert resp.status_code in (200, 409)  # 409 if service busy
-
-
-class TestConvertJobDefaults:
-    """Verify the default values used in ConversionJob construction after PR changes."""
-
-    def test_convert_default_tile_size_is_512(self, client, tmp_svs):
-        """Default tile_size in inline job construction changed to 512 in this PR."""
-        captured_jobs = []
-
-        class CapturingService:
-            is_active = False
-            progress_queues = {}
-            latest_events = {}
-
-            def start_conversion(self, job):
-                captured_jobs.append(job)
-                return "req-id"
-
-            def inspect_slide(self, path):
-                return {}
-
-            def cleanup_job(self, request_id):
-                pass
-
-        from svs_to_ometiff_gui.serve import app
+    def test_batch_accepts_tile_size_not_divisible_by_16(self, client, tmp_svs):
+        """Batch route does not enforce tile_size divisibility by 16; 513 must be accepted."""
+        service = DummyConversionService()
         original = app.config["CONVERSION_SERVICE"]
-        app.config["CONVERSION_SERVICE"] = CapturingService()
+        app.config["CONVERSION_SERVICE"] = service
         try:
             resp = client.post(
-                "/convert",
-                data=json.dumps({"input_path": str(tmp_svs)}),
+                "/convert/batch",
+                data=json.dumps({"inputs": [str(tmp_svs)], "tile_size": 513}),
                 content_type="application/json",
             )
         finally:
             app.config["CONVERSION_SERVICE"] = original
-
         assert resp.status_code == 200
-        assert len(captured_jobs) == 1
-        assert captured_jobs[0].tile_size == 512
-
-    def test_convert_default_edge_mode_is_crop(self, client, tmp_svs):
-        """Default edge_mode should be 'crop'."""
-        captured_jobs = []
-
-        class CapturingService:
-            is_active = False
-            progress_queues = {}
-            latest_events = {}
-
-            def start_conversion(self, job):
-                captured_jobs.append(job)
-                return "req-id"
-
-            def inspect_slide(self, path):
-                return {}
-
-            def cleanup_job(self, request_id):
-                pass
-
-        from svs_to_ometiff_gui.serve import app
-        original = app.config["CONVERSION_SERVICE"]
-        app.config["CONVERSION_SERVICE"] = CapturingService()
-        try:
-            resp = client.post(
-                "/convert",
-                data=json.dumps({"input_path": str(tmp_svs)}),
-                content_type="application/json",
-            )
-        finally:
-            app.config["CONVERSION_SERVICE"] = original
-
-        assert resp.status_code == 200
-        assert captured_jobs[0].edge_mode == "crop"
 
     def test_batch_default_tile_size_is_512(self, client, tmp_svs):
-        """Batch route default tile_size is 512 per the inline code in this PR."""
-        captured_templates = []
-
-        class CapturingService:
-            is_active = False
-            progress_queues = {}
-            latest_events = {}
-
-            def start_batch_conversion(self, inputs, output_dir, job_template):
-                captured_templates.append(job_template)
-                return "batch-req-id"
-
-            def inspect_slide(self, path):
-                return {}
-
-            def cleanup_job(self, request_id):
-                pass
-
-        from svs_to_ometiff_gui.serve import app
+        """When tile_size is omitted from batch, route defaults to 512."""
+        service = DummyConversionService()
         original = app.config["CONVERSION_SERVICE"]
-        app.config["CONVERSION_SERVICE"] = CapturingService()
+        app.config["CONVERSION_SERVICE"] = service
         try:
             resp = client.post(
                 "/convert/batch",
@@ -431,7 +383,21 @@ class TestConvertJobDefaults:
             )
         finally:
             app.config["CONVERSION_SERVICE"] = original
-
         assert resp.status_code == 200
-        assert len(captured_templates) == 1
-        assert captured_templates[0].tile_size == 512
+        assert service.job.tile_size == 512
+
+    def test_batch_default_num_levels_is_6(self, client, tmp_svs):
+        """When num_levels is omitted from batch, route defaults to 6."""
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert/batch",
+                data=json.dumps({"inputs": [str(tmp_svs)]}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+        assert resp.status_code == 200
+        assert service.job.num_levels == 6

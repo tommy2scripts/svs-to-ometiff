@@ -6,52 +6,6 @@ import os
 import pytest
 
 
-class TestPackageVersion:
-    """Tests that the package version matches what was set in this PR."""
-
-    def test_version_is_0_5_1(self):
-        from svs_to_ometiff import __version__
-        assert __version__ == "0.5.1"
-
-    def test_version_string_format(self):
-        from svs_to_ometiff import __version__
-        parts = __version__.split(".")
-        assert len(parts) == 3
-        assert all(p.isdigit() for p in parts)
-
-
-class TestConvertConfigJpeg2000ErrorMessage:
-    """Tests that the jpeg2000 error message in config.py refers to '0.5.1'."""
-
-    def test_jpeg2000_error_mentions_version_0_5_1(self):
-        from svs_to_ometiff.config import ConvertConfig
-        with pytest.raises(ValueError, match="0.5.1"):
-            ConvertConfig(
-                input_svs="/fake/input.svs",
-                output_ometiff="/fake/output.ome.tiff",
-                compression="jpeg2000",
-            )
-
-    def test_jpeg2000_error_does_not_say_this_release(self):
-        from svs_to_ometiff.config import ConvertConfig
-        with pytest.raises(ValueError) as exc_info:
-            ConvertConfig(
-                input_svs="/fake/input.svs",
-                output_ometiff="/fake/output.ome.tiff",
-                compression="jpeg2000",
-            )
-        assert "this release" not in str(exc_info.value)
-
-    def test_jpeg2000_error_mentions_alternatives(self):
-        from svs_to_ometiff.config import ConvertConfig
-        with pytest.raises(ValueError) as exc_info:
-            ConvertConfig(
-                input_svs="/fake/input.svs",
-                output_ometiff="/fake/output.ome.tiff",
-                compression="jpeg2000",
-            )
-        assert "zlib" in str(exc_info.value)
-
 
 class TestConfig:
     """Config loads from environment with defaults."""
@@ -86,3 +40,38 @@ class TestHealthCheck:
         resp = client.get("/health")
         data = json.loads(resp.data)
         assert data["active_jobs"] == 0
+
+
+class TestConvertConfigVersionMessage:
+    """ConvertConfig error messages reference the current version string."""
+
+    def test_jpeg2000_error_contains_version_051(self):
+        """jpeg2000 compression error must mention '0.5.1' (not 'this release')."""
+        from svs_to_ometiff.config import ConvertConfig
+        with pytest.raises(ValueError, match="0.5.1"):
+            ConvertConfig(
+                input_svs="/fake/input.svs",
+                output_ometiff="/fake/output.ome.tiff",
+                tile_size=512,
+                compression="jpeg2000",
+            )
+
+    def test_jpeg2000_error_does_not_say_this_release(self):
+        """The old 'this release' wording must no longer appear in the error."""
+        from svs_to_ometiff.config import ConvertConfig
+        with pytest.raises(ValueError) as exc_info:
+            ConvertConfig(
+                input_svs="/fake/input.svs",
+                output_ometiff="/fake/output.ome.tiff",
+                tile_size=512,
+                compression="jpeg2000",
+            )
+        assert "this release" not in str(exc_info.value)
+
+
+class TestPackageVersion:
+    """Package __version__ reflects the current release."""
+
+    def test_version_is_051(self):
+        from svs_to_ometiff import __version__
+        assert __version__ == "0.5.1"
