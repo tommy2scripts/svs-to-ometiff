@@ -23,6 +23,7 @@ class ConvertConfig:
     verbose: bool = True
     tile_progress_interval: int = 20
     progress_logger: Optional[ProgressLogger] = None
+    temp_dir: Optional[str] = None
 
     def __post_init__(self) -> None:
         self._validate()
