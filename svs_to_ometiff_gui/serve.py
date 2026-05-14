@@ -100,6 +100,7 @@ def _build_conversion_job(
     )
     compression = body.get("compression", _config.DEFAULT_COMPRESSION)
     edge_mode = body.get("edge_mode", _config.DEFAULT_EDGE_MODE)
+    temp_dir = body.get("temp_dir", "") or None
     converter_compression = None if compression == "none" else compression
 
     ConvertConfig(
@@ -120,6 +121,7 @@ def _build_conversion_job(
         num_levels=num_levels,
         downsample_factor=downsample_factor,
         edge_mode=edge_mode,
+        temp_dir=temp_dir,
     )
 
 

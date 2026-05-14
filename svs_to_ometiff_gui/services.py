@@ -150,7 +150,7 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
             convert(
                 config_or_input_svs=input_path,
                 output_ometiff=output_path,
-                tile_size=job_template_dict.get("tile_size", 512),
+                tile_size=job_template_dict.get("tile_size", 1024),
                 compression=compression,
                 num_levels=job_template_dict.get("num_levels", 6),
                 downsample_factor=job_template_dict.get("downsample_factor", 2),
