@@ -103,6 +103,18 @@ def handle_inspect():
 
 @app.route("/convert", methods=["POST"])
 def handle_convert():
+    """
+    Start a single-slide conversion job from the JSON body of the HTTP request.
+    
+    Expects a JSON body containing at minimum `input_path`. Optional fields: `output_path`, `tile_size`, `num_levels`, `downsample_factor`, `compression`, `edge_mode`, and `temp_dir`. Validates paths, extensions, numeric parameters, and output directory writability, then enqueues a ConversionJob with defaults applied where fields are omitted.
+    
+    Returns:
+        dict: On success, JSON containing `request_id` (string) and `output_path` (string).
+    
+    Error responses:
+        400: Missing or invalid parameters (e.g., absent `input_path`, unresolved path, wrong extension, non-writable output directory, or invalid numeric values).
+        409: A conversion is already running.
+    """
     if app.config["CONVERSION_SERVICE"].is_active:
         return jsonify({"error": "A conversion is already running."}), 409
 
@@ -183,6 +195,23 @@ def handle_convert():
 
 @app.route("/convert/batch", methods=["POST"])
 def handle_convert_batch():
+    """
+    Start a batch conversion job for multiple `.svs` input files and return the job identifier.
+    
+    Expects a JSON body with the following fields:
+    - `inputs` (list): Non-empty list of input paths (strings) to `.svs` files.
+    - `output_dir` (string, optional): Directory where converted files will be written. If empty or omitted, defaults to the parent directory of the first resolvable input or the current working directory.
+    - `tile_size` (int, optional): Tile size in pixels; must be a positive integer. Defaults to 512.
+    - `num_levels` (int, optional): Number of pyramid levels; must be a positive integer. Defaults to 6.
+    - `downsample_factor` (int, optional): Downsample factor between levels; must be a positive integer. Defaults to 2.
+    - `compression` (string, optional): Compression identifier to use; defaults to the application default.
+    - `edge_mode` (string, optional): Edge handling mode; defaults to `"crop"`.
+    - `temp_dir` (string, optional): Temporary directory path; empty strings are treated as `None`.
+    
+    The endpoint validates inputs and output directory writability, constructs a job template, and enqueues a batch conversion.
+    
+    @returns JSON containing `request_id` (the batch job id), `output_dir` (resolved output directory), and `count` (number of files enqueued), or a JSON error message with an appropriate HTTP status code on failure.
+    """
     if app.config["CONVERSION_SERVICE"].is_active:
         return jsonify({"error": "A conversion is already running."}), 409
 

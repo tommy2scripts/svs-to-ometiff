@@ -23,7 +23,22 @@ class ConversionJob:
     request_id: str = ""
 
     def to_converter_kwargs(self) -> dict:
-        """Return kwargs suitable for passing to ``convert()``."""
+        """
+        Builds a keyword-arguments dictionary for calling the converter's `convert()` function.
+        
+        The returned dict maps converter parameter names to this job's fields. Empty `output_path` is returned as `None`, `compression` is returned as `None` when set to `"none"`, and `temp_dir` is returned as `None` when unset.
+        
+        Returns:
+            dict: A mapping with keys:
+                - "config_or_input_svs": input path string
+                - "output_ometiff": output path string or `None`
+                - "tile_size": tile size integer
+                - "compression": compression string or `None`
+                - "num_levels": number of pyramid levels integer
+                - "downsample_factor": downsample factor integer
+                - "edge_mode": edge handling string
+                - "temp_dir": temporary directory path string or `None`
+        """
         return {
             "config_or_input_svs": self.input_path,
             "output_ometiff": self.output_path or None,

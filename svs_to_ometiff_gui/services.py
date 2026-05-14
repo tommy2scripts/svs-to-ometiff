@@ -105,7 +105,21 @@ def _run_single_conversion_worker(request_id: str, kwargs: dict, m_queue):
 
 
 def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir: str, job_template_dict: dict, m_queue):
-    """Run batch conversion in an isolated process."""
+    """
+    Run conversions for multiple input files in this process and emit progress events to the provided multiprocessing queue.
+    
+    Processes each path in `inputs`, converts it to an OME-TIFF written under `output_dir`, and sends progress, completion, and error events by putting tuples (request_id, event_type, data) into `m_queue`. The function uses settings from `job_template_dict` (see keys below) and maps `"none"` compression to `None`.
+    
+    Parameters:
+        request_id (str): Unique identifier used as the first element of emitted queue events.
+        inputs (list[str]): Iterable of input file paths to convert.
+        output_dir (str): Directory where converted OME-TIFF files will be written.
+        job_template_dict (dict): Pickle-safe template of conversion options. Recognized keys:
+            - "compression": compression name or "none" (treated as no compression)
+            - "tile_size", "num_levels", "downsample_factor", "edge_mode", "temp_dir"
+        m_queue: Multiprocessing-safe queue used to emit events. Events are tuples (request_id, event_type, data).
+    
+    """
     total_files = len(inputs)
     compression = job_template_dict.get("compression")
     if compression == "none":
@@ -274,7 +288,17 @@ class ConversionService:
         output_dir: str,
         job_template: ConversionJob,
     ) -> str:
-        """Create job, spawn batch process, return request_id."""
+        """
+        Start a batch conversion job and schedule a worker process to perform conversions.
+        
+        Parameters:
+        	inputs (list[str]): Paths of input files to convert.
+        	output_dir (str): Directory where converted OME-TIFF files will be written.
+        	job_template (ConversionJob): Template containing conversion options (compression, tile size, levels, downsample factor, edge mode, and temp_dir) used by the worker.
+        
+        Returns:
+        	request_id (str): Unique identifier for the created batch job.
+        """
         self._ensure_executor()
         request_id = self.create_job("batch", f"{len(inputs)} files", output_dir)
         
