@@ -1,0 +1,27 @@
+.git/
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Runtime artifacts and large image data
+*.svs
+*.ome.tiff
+*.sqlite3
+*.log
+*.pid
+data/
+
+# Local configuration and credentials
+.env
+.env.*
+*.pem
+*.key
+credentials*
+service_account*
+client_secret*

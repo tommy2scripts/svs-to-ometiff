@@ -20,6 +20,7 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, render_template, request
 
 from svs_to_ometiff import __version__
+from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff_gui.config import Config
 from svs_to_ometiff_gui.file_dialogs import get_dialog_strategy
 from svs_to_ometiff_gui.models import ConversionJob
@@ -69,6 +70,57 @@ def _estimate_percent(message: str):
     """Thin wrapper kept for backward compatibility with tests."""
     from svs_to_ometiff_gui.services import estimate_percent
     return estimate_percent(message)
+
+
+def _coerce_positive_int(body: dict, key: str, default: int) -> int:
+    """Read a positive integer option from a JSON body."""
+    value = body.get(key, default)
+    try:
+        coerced = int(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"{key} must be a positive integer") from exc
+    if coerced <= 0:
+        raise ValueError(f"{key} must be a positive integer")
+    return coerced
+
+
+def _build_conversion_job(
+    body: dict,
+    *,
+    input_path: str,
+    output_path: str,
+) -> ConversionJob:
+    """Build and validate a conversion job before queueing background work."""
+    tile_size = _coerce_positive_int(body, "tile_size", _config.DEFAULT_TILE_SIZE)
+    num_levels = _coerce_positive_int(body, "num_levels", _config.DEFAULT_NUM_LEVELS)
+    downsample_factor = _coerce_positive_int(
+        body,
+        "downsample_factor",
+        _config.DEFAULT_DOWNSAMPLE,
+    )
+    compression = body.get("compression", _config.DEFAULT_COMPRESSION)
+    edge_mode = body.get("edge_mode", _config.DEFAULT_EDGE_MODE)
+    converter_compression = None if compression == "none" else compression
+
+    ConvertConfig(
+        input_svs=input_path,
+        output_ometiff=output_path,
+        tile_size=tile_size,
+        compression=converter_compression,
+        num_levels=num_levels,
+        downsample_factor=downsample_factor,
+        edge_mode=edge_mode,
+    )
+
+    return ConversionJob(
+        input_path=input_path,
+        output_path=output_path,
+        tile_size=tile_size,
+        compression="none" if converter_compression is None else compression,
+        num_levels=num_levels,
+        downsample_factor=downsample_factor,
+        edge_mode=edge_mode,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -141,38 +193,14 @@ def handle_convert():
     if not os.access(output_dir, os.W_OK):
         return jsonify({"error": f"Output directory is not writable: {output_dir}"}), 400
 
-    # Validate tile_size
-    tile_size = body.get("tile_size")
-    if tile_size is not None:
-        try:
-            tile_size_val = int(tile_size)
-            if tile_size_val <= 0:
-                raise ValueError("Must be positive")
-        except (ValueError, TypeError):
-            return jsonify({"error": "tile_size must be a positive integer"}), 400
-
-    # Validate integer params
-    for param_name in ("num_levels", "downsample_factor"):
-        val = body.get(param_name)
-        if val is not None:
-            try:
-                val_int = int(val)
-                if val_int <= 0:
-                    raise ValueError("Must be positive")
-            except (ValueError, TypeError):
-                return jsonify({"error": f"{param_name} must be a positive integer"}), 400
-
-    # Build a typed ConversionJob
-    compression = body.get("compression", _config.DEFAULT_COMPRESSION)
-    job = ConversionJob(
-        input_path=input_path,
-        output_path=output_path,
-        tile_size=int(body.get("tile_size", 512)),
-        compression=compression,
-        num_levels=int(body.get("num_levels", 6)),
-        downsample_factor=int(body.get("downsample_factor", 2)),
-        edge_mode=body.get("edge_mode", "crop"),
-    )
+    try:
+        job = _build_conversion_job(
+            body,
+            input_path=input_path,
+            output_path=output_path,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     request_id = app.config["CONVERSION_SERVICE"].start_conversion(job)
 
@@ -221,27 +249,16 @@ def handle_convert_batch():
     if not os.access(output_dir, os.W_OK):
         return jsonify({"error": f"Output directory is not writable: {output_dir}"}), 400
 
-    # Validate integer params
-    for int_val in ("tile_size", "num_levels", "downsample_factor"):
-        val = body.get(int_val)
-        if val is not None:
-            try:
-                v = int(val)
-                if v <= 0:
-                    raise ValueError("Must be positive")
-            except (ValueError, TypeError):
-                return jsonify({"error": f"{int_val} must be positive int"}), 400
-
-    # Build job template
-    compression = body.get("compression", _config.DEFAULT_COMPRESSION)
-    job_template = ConversionJob(
-        input_path="",  # filled per-file
-        tile_size=int(body.get("tile_size", 512)),
-        compression=compression,
-        num_levels=int(body.get("num_levels", 6)),
-        downsample_factor=int(body.get("downsample_factor", 2)),
-        edge_mode=body.get("edge_mode", "crop"),
-    )
+    try:
+        job_template = _build_conversion_job(
+            body,
+            input_path=resolved_inputs[0],
+            output_path=str(Path(output_dir) / "validation.ome.tiff"),
+        )
+        job_template.input_path = ""  # filled per-file by the batch worker
+        job_template.output_path = ""
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     request_id = app.config["CONVERSION_SERVICE"].start_batch_conversion(
         resolved_inputs, output_dir, job_template

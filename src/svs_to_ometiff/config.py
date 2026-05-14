@@ -40,7 +40,7 @@ class ConvertConfig:
             if self.compression == "jpeg2000":
                 raise ValueError(
                     "compression='jpeg2000' is not supported by svs-to-ometiff "
-                    "0.5.1. Use 'zlib', 'lzw', 'deflate', or None/'none'; "
+                    "this release. Use 'zlib', 'lzw', 'deflate', or None/'none'; "
                     "recompress the output separately if JPEG 2000 is required."
                 )
             raise ValueError(

@@ -6,13 +6,12 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
-      # Mount the user's home directory so the tool can browse and convert files
-      # You can change this to a specific data directory like "/path/to/my/slides:/data"
-      - ~/:/data
+      # Mount only the slide directory you want this local GUI to access.
+      - ./data:/data
     environment:
       - SVS_GUI_HOST=0.0.0.0
       - SVS_GUI_PORT=5000
-      - SVS_GUI_MAX_CONCURRENT_JOBS=2
+      - SVS_GUI_MAX_JOBS=1
     restart: unless-stopped

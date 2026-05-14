@@ -2,6 +2,27 @@
 
 import json
 
+from svs_to_ometiff_gui.serve import app
+
+
+class DummyConversionService:
+    """Minimal conversion service double for route-level job tests."""
+
+    is_active = False
+
+    def __init__(self):
+        self.job = None
+
+    def start_conversion(self, job):
+        self.job = job
+        return "single-request"
+
+    def start_batch_conversion(self, inputs, output_dir, job_template):
+        self.inputs = inputs
+        self.output_dir = output_dir
+        self.job = job_template
+        return "batch-request"
+
 
 
 class TestIndexRoute:
@@ -82,6 +103,52 @@ class TestConvertRoute:
         data = json.loads(resp.data)
         assert "tile_size" in data["error"]
 
+    def test_convert_rejects_tile_size_not_divisible_by_16(self, client, tmp_svs):
+        resp = client.post(
+            "/convert",
+            data=json.dumps({
+                "input_path": str(tmp_svs),
+                "tile_size": 513,
+            }),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "divisible by 16" in data["error"]
+
+    def test_convert_rejects_invalid_compression(self, client, tmp_svs):
+        resp = client.post(
+            "/convert",
+            data=json.dumps({
+                "input_path": str(tmp_svs),
+                "compression": "jpeg2000",
+            }),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "jpeg2000" in data["error"]
+
+    def test_convert_defaults_match_gui_config(self, client, tmp_svs):
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({"input_path": str(tmp_svs)}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+
+        assert resp.status_code == 200
+        assert service.job.tile_size == 1024
+        assert service.job.compression == "zlib"
+        assert service.job.num_levels == 6
+        assert service.job.downsample_factor == 2
+        assert service.job.edge_mode == "crop"
+
 
 class TestBatchConvertRoute:
     """POST /convert/batch validates inputs list."""
@@ -119,3 +186,23 @@ class TestBatchConvertRoute:
             content_type="application/json",
         )
         assert resp.status_code == 400
+
+    def test_batch_defaults_match_gui_config(self, client, tmp_svs):
+        service = DummyConversionService()
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = service
+        try:
+            resp = client.post(
+                "/convert/batch",
+                data=json.dumps({"inputs": [str(tmp_svs)]}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+
+        assert resp.status_code == 200
+        assert service.job.tile_size == 1024
+        assert service.job.compression == "zlib"
+        assert service.job.num_levels == 6
+        assert service.job.downsample_factor == 2
+        assert service.job.edge_mode == "crop"

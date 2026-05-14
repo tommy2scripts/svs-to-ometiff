@@ -12,9 +12,9 @@ from svs_to_ometiff.config import ConvertConfig
 def _simulate_gui_params(
     input_path: str = "/fake/input.svs",
     output_path: str = "/fake/output.ome.tiff",
-    tile_size: str = "512",
-    compression: str = "none",
-    num_levels: str = "3",
+    tile_size: str = "1024",
+    compression: str = "zlib",
+    num_levels: str = "6",
     downsample_factor: str = "2",
     edge_mode: str = "crop",
 ) -> ConvertConfig:
@@ -32,10 +32,13 @@ def _simulate_gui_params(
     )
 
 
-def test_gui_params_default_compression_is_none() -> None:
-    """GUI sends compression='none' by default → ConvertConfig stores None."""
+def test_gui_params_defaults_match_public_gui_defaults() -> None:
+    """GUI defaults match the documented public conversion profile."""
     config = _simulate_gui_params()
-    assert config.compression is None
+    assert config.tile_size == 1024
+    assert config.compression == "zlib"
+    assert config.num_levels == 6
+    assert config.downsample_factor == 2
 
 
 def test_gui_params_explicit_lzw_compression() -> None:

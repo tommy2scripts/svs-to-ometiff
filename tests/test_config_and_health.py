@@ -31,7 +31,7 @@ class TestHealthCheck:
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data["status"] == "ok"
-        assert data["version"] == "0.5.1"
+        assert data["version"] == "0.5.2"
         assert "active_jobs" in data
 
     def test_health_shows_no_active_jobs(self, client):

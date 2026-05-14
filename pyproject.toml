@@ -1,13 +1,36 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "svs-to-ometiff"
-version = "0.5.1"
+version = "0.5.2"
 description = "Convert Aperio SVS whole-slide images to OME-TIFF, with CLI and Flask GUI."
 readme = "README.md"
 requires-python = ">=3.9"
+license = "MIT"
+authors = [
+    {name = "Tommy Tran", email = "ttran@biochain.com"}
+]
+keywords = [
+    "aperio",
+    "svs",
+    "ome-tiff",
+    "whole-slide-imaging",
+    "digital-pathology",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
 dependencies = [
     "numpy>=1.21",
     "tifffile>=2022.5.4",
@@ -21,6 +44,8 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.1.0",
+    "build>=1.0",
+    "twine>=5.0",
 ]
 
 [project.scripts]
@@ -29,6 +54,11 @@ svs-to-ometiff-batch = "svs_to_ometiff.batch:main"
 svs-to-ometiff-verify = "svs_to_ometiff.verify:main"
 svs-to-ometiff-inspect = "svs_to_ometiff.inspect:main"
 svs-to-ometiff-gui = "svs_to_ometiff_gui.serve:main"
+
+[project.urls]
+Homepage = "https://github.com/tommy2scripts/svs-to-ometiff"
+Repository = "https://github.com/tommy2scripts/svs-to-ometiff"
+"Bug Tracker" = "https://github.com/tommy2scripts/svs-to-ometiff/issues"
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
