@@ -6,6 +6,9 @@ block-averaging downsampling. The classic API returns in-memory arrays; the
 streaming conversion path uses disk-backed memmaps for lower peak RAM.
 """
 
+import gc
+import logging
+import shutil
 import time
 from pathlib import Path
 from typing import Literal, Optional
@@ -187,3 +190,74 @@ def build_pyramid_memmaps(
 
     _log(verbose, progress_logger, f"Pyramid built in {time.time() - t0:.0f}s")
     return levels
+
+# Maximum seconds to spend retrying temp directory cleanup
+_CLEANUP_RETRY_DELAYS = [0.5, 1.0, 2.0]
+
+
+def cleanup_pyramid_memmaps(
+    levels: list[np.ndarray],
+    temp_dir: str,
+    *,
+    max_retries: int = 3,
+    logger: Optional[logging.Logger] = None,
+) -> Optional[str]:
+    """Safely close memmaps and remove temp directory with Windows-friendly retry logic.
+
+    Args:
+        levels: List of numpy arrays (some may be memmaps) to close.
+        temp_dir: Temporary directory to remove.
+        max_retries: Number of cleanup retries (default 3).
+        logger: Optional logger for warnings.
+
+    Returns:
+        Warning message if cleanup failed, None if successful.
+    """
+    # 1. Flush and close all memmaps explicitly
+    for level in levels:
+        if isinstance(level, np.memmap):
+            try:
+                level.flush()
+            except Exception:
+                pass
+            try:
+                level.close()
+            except Exception:
+                pass
+    levels.clear()
+
+    # 2. Run GC to release any file handles
+    gc.collect()
+
+    # 3. Retry directory removal with backoff
+    for attempt in range(max_retries + 1):
+        try:
+            if Path(temp_dir).exists():
+                shutil.rmtree(temp_dir)
+            return None
+        except PermissionError:
+            if attempt < max_retries:
+                time.sleep(_CLEANUP_RETRY_DELAYS[min(attempt, len(_CLEANUP_RETRY_DELAYS) - 1)])
+                gc.collect()
+                continue
+            msg = (
+                f"Temp directory cleanup failed after {max_retries} retries: "
+                f"{temp_dir}. The output OME-TIFF was written successfully "
+                f"but temporary files could not be removed. "
+                f"You may safely delete the temp folder manually."
+            )
+            if logger:
+                logger.warning(msg)
+            else:
+                log = logging.getLogger(__name__)
+                log.warning(msg)
+            return msg
+        except Exception as exc:
+            msg = f"Temp directory cleanup warning: {exc}. Temp dir: {temp_dir}"
+            if logger:
+                logger.warning(msg)
+            else:
+                log = logging.getLogger(__name__)
+                log.warning(msg)
+            return msg
+    return None

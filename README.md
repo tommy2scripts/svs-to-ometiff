@@ -178,19 +178,35 @@ if info["convertible"]:
 
 Current validation is limited. The converter includes unit and integration
 tests built from synthetic Aperio-style TIFF fixtures, and has been manually
-validated on one real Aperio compression-33007 file. It has not been validated
-for diagnostic workflows, broad scanner coverage, color management, or
-regulatory use.
+validated on real Aperio compression-33007 files from an AT2/GT450 scanner
+(lung H&E). It has not been validated for diagnostic workflows, broad scanner
+coverage, color management, or regulatory use.
 
-Before relying on outputs, verify:
+**Xenium Explorer compatibility:** The converter produces pyramidal OME-TIFF
+output with SubIFD linkage, configured for compatibility with Xenium Explorer
+post-Xenium H&E alignment workflows. Output has been verified with QuPath and
+Bio-Formats-compatible viewers. Validate in Xenium Explorer before production use.
 
-- `svs-to-ometiff-verify` passes
-- the expected number of pyramid levels are present
-- image dimensions match the source
-- visual content aligns with the source slide in an independent viewer
-- downstream tools can open the OME-TIFF
+### Pre-release validation checklist
+
+- [ ] Run `svs-to-ometiff-inspect slide.svs` to confirm compression 33007
+- [ ] Run `svs-to-ometiff slide.svs slide.ome.tiff`
+- [ ] Run `svs-to-ometiff-verify slide.ome.tiff --min-levels 6`
+- [ ] Open in QuPath or Bio-Formats-compatible viewer
+- [ ] Inspect visual alignment with source slide
+- [ ] Test in downstream workflow (e.g., Xenium Explorer alignment)
 
 ## Troubleshooting
+
+**Windows setup**
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+svs-to-ometiff-gui
+```
 
 **`Convertible: no` or "only supports Aperio compression 33007"**
 

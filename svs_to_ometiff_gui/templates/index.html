@@ -32,7 +32,7 @@
       <div class="tab-content active" id="contentSingle">
         <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop SVS file (browser drag/drop may only provide filename) or use Browse for full path">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <div class="dropzone-text">Drop <strong>.svs</strong> file here (browser drag/drop may only provide filename). Use <strong>Browse</strong> for full path</div>
+          <div class="dropzone-text">Use <strong>Browse</strong> to select an <strong>.svs</strong> file, or paste the full file path manually.</div>
         </div>
         <input type="file" id="fileInput" accept=".svs" style="display:none">
 
@@ -43,8 +43,8 @@
             <button type="button" class="btn btn-secondary btn-sm" id="browseBtn">Browse</button>
           </div>
         </div>
-        <div id="pathHint" class="hidden" style="margin:-0.5rem 0 0.5rem;padding:0.55rem 0.65rem;font-size:0.78rem;font-weight:600;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;">
-          Browser only provided filename. Use Browse or paste full path.
+        <div id="pathHint" class="hidden" style="margin:-0.5rem 0 0.5rem;font-size:0.72rem;color:var(--text-muted);">
+          Copied filename only — use <strong>Browse</strong> or paste the full path. Browser drag-and-drop cannot expose full local paths.
         </div>
 
         <!-- Slide Info Card -->
@@ -103,6 +103,13 @@
         <div class="form-group">
           <label for="edgeMode">Edge Mode</label>
           <select id="edgeMode"><option value="crop" selected>crop</option><option value="pad">pad</option></select>
+        </div>
+        <div class="form-group">
+          <label for="tempDir">Temp Directory</label>
+          <input type="text" id="tempDir" placeholder="System default (recommended)" autocomplete="off">
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.15rem;">
+            Use a local drive path on Windows to avoid network-file locking issues.
+          </div>
         </div>
       </div>
 

@@ -85,6 +85,13 @@ def _print_experimental_warning() -> None:
     is_flag=True,
     help="Print detailed progress, including every source tile row.",
 )
+@click.option(
+    "--temp-dir",
+    default=None,
+    type=click.Path(),
+    help="Directory for temporary files (default: system temp dir). "
+         "Use a local drive on Windows to avoid network-locking issues.",
+)
 @click.version_option(version=__version__, prog_name="svs-to-ometiff")
 def main(
     input_svs: str,
@@ -98,6 +105,7 @@ def main(
     temp_dir: Optional[str],
     quiet: bool,
     verbose: bool,
+    temp_dir: Optional[str],
 ) -> None:
     """
     Convert an Aperio SVS file to pyramidal OME-TIFF.
@@ -139,6 +147,7 @@ def main(
             temp_dir=temp_dir,
             verbose=show_progress,
             tile_progress_interval=tile_progress_interval,
+            temp_dir=temp_dir,
         )
     except Exception as exc:
         click.echo(f"Error: {type(exc).__name__}: {exc}", err=True)

@@ -259,6 +259,7 @@
       num_levels: parseInt($('numLevels').value, 10),
       downsample_factor: parseInt($('downsampleFactor').value, 10),
       edge_mode: $('edgeMode').value,
+      temp_dir: $('tempDir').value.trim() || undefined,
     });
 
     convertBtn.disabled = true; convertBtn.textContent = 'Converting…';

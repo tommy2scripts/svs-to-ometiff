@@ -77,6 +77,13 @@ from svs_to_ometiff.converter import convert
     is_flag=True,
     help="Print detailed progress, including every source tile row.",
 )
+@click.option(
+    "--temp-dir",
+    default=None,
+    type=click.Path(),
+    help="Directory for temporary files (default: system temp dir). "
+         "Use a local drive on Windows to avoid network-locking issues.",
+)
 @click.version_option(version=__version__, prog_name="svs-to-ometiff-batch")
 def main(
     input_pattern: str,
@@ -89,6 +96,7 @@ def main(
     temp_dir: Optional[str],
     quiet: bool,
     verbose: bool,
+    temp_dir: Optional[str],
 ) -> None:
     """
     Batch-convert Aperio SVS files to pyramidal OME-TIFF.
@@ -155,6 +163,7 @@ def main(
                 temp_dir=temp_dir,
                 verbose=show_progress,
                 tile_progress_interval=tile_progress_interval,
+                temp_dir=temp_dir,
             )
             succeeded += 1
         except Exception as exc:

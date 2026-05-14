@@ -5,10 +5,6 @@ The public ``convert`` function mirrors the CLI pipeline: read Aperio 33007
 tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 """
 
-import gc
-import shutil
-import tempfile
-import time
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -16,12 +12,14 @@ import numpy as np
 
 from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff.pyramid import build_pyramid_memmaps
+from svs_to_ometiff.pyramid import cleanup_pyramid_memmaps as _cleanup_pyramid_memmaps
 from svs_to_ometiff.tile_reader import iter_svs_rgb_tiles, read_svs_metadata
 from svs_to_ometiff.utils import _log
 from svs_to_ometiff.writer import (
     write_pyramidal_ometiff_from_levels as write_pyramidal_ometiff,
 )
 
+import tempfile
 
 _LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
     "tile_size": 512,
@@ -276,9 +274,13 @@ def convert(
 
     temp_base_dir = config.temp_dir if config.temp_dir is not None else tempfile.gettempdir()
     levels: list[np.ndarray] = []
-    level0: Optional[np.memmap] = None
-    temp_dir = tempfile.mkdtemp(prefix="svs_to_ometiff_", dir=temp_base_dir)
-    write_succeeded = False
+
+    # Determine temp directory base: prefer config.temp_dir, then system temp (avoid network drives)
+    _temp_base = config.temp_dir if config.temp_dir else None
+    temp_dir_obj = tempfile.TemporaryDirectory(prefix="svs_to_ometiff_", dir=_temp_base)
+    temp_dir = temp_dir_obj.name
+    _log(config.verbose, config.progress_logger, f"Temp dir: {temp_dir}", phase="setup", percent=5.0)
+
     try:
         _log(config.verbose, config.progress_logger, "Decoding SVS tiles to disk-backed level 0...", phase="tile_decoding", percent=10.0)
         level0 = _stage_level0_memmap(config, metadata, temp_dir)
@@ -341,19 +343,45 @@ def convert(
             progress_logger=config.progress_logger,
         )
 
-    output_size = Path(config.output_ometiff).stat().st_size
-    result: dict[str, object] = {
-        **metadata,
-        "estimated_peak_ram_bytes": estimated_ram,
-        "pyramid_shapes": pyramid_shapes,
-        "output_path": config.output_ometiff,
-        "output_size_bytes": output_size,
-    }
-    _log(
-        config.verbose,
-        config.progress_logger,
-        f"Conversion complete: {config.output_ometiff} ({output_size / 1e9:.2f} GB)",
-        phase="complete",
-        percent=100.0,
-    )
+        output_size = Path(config.output_ometiff).stat().st_size
+        result: dict[str, object] = {
+            **metadata,
+            "estimated_peak_ram_bytes": estimated_ram,
+            "pyramid_shapes": pyramid_shapes,
+            "output_path": config.output_ometiff,
+            "output_size_bytes": output_size,
+        }
+        _log(
+            config.verbose,
+            config.progress_logger,
+            f"Conversion complete: {config.output_ometiff} ({output_size / 1e9:.2f} GB)",
+            phase="complete",
+            percent=100.0,
+        )
+    except Exception:
+        # Ensure cleanup on error
+        _close_memmaps(levels)
+        try:
+            temp_dir_obj.cleanup()
+        except Exception:
+            pass
+        raise
+    else:
+        # Output was written successfully. Clean up temp dir with Windows-safe retry.
+        # Even if cleanup fails, the conversion is still successful — only warn.
+        try:
+            temp_dir_obj.cleanup()
+        except Exception:
+            pass
+        cleanup_warning = _cleanup_pyramid_memmaps(levels, temp_dir)
+        if cleanup_warning:
+            result["cleanup_warning"] = cleanup_warning
+            _log(
+                config.verbose,
+                config.progress_logger,
+                cleanup_warning,
+                phase="complete",
+                percent=100.0,
+            )
+
     return result

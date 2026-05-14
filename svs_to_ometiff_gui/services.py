@@ -150,11 +150,12 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
             convert(
                 config_or_input_svs=input_path,
                 output_ometiff=output_path,
-                tile_size=job_template_dict.get("tile_size", 512),
+                tile_size=job_template_dict.get("tile_size", 1024),
                 compression=compression,
                 num_levels=job_template_dict.get("num_levels", 6),
                 downsample_factor=job_template_dict.get("downsample_factor", 2),
                 edge_mode=job_template_dict.get("edge_mode", "crop"),
+                temp_dir=job_template_dict.get("temp_dir"),
                 progress_logger=progress_callback,
             )
 
@@ -285,6 +286,7 @@ class ConversionService:
             "num_levels": job_template.num_levels,
             "downsample_factor": job_template.downsample_factor,
             "edge_mode": job_template.edge_mode,
+            "temp_dir": job_template.temp_dir,
         }
         self._executor.submit(
             _run_batch_conversion_worker,
