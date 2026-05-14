@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "svs-to-ometiff"
-version = "0.5.2"
+version = "0.6.0"
 description = "Convert Aperio SVS whole-slide images to OME-TIFF, with CLI and Flask GUI."
 readme = "README.md"
 requires-python = ">=3.9"
