@@ -5,7 +5,7 @@ and slide metadata, improving code clarity and enabling validation.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -21,12 +21,14 @@ class ConversionJob:
     edge_mode: str = "crop"
     temp_dir: Optional[str] = None
     request_id: str = ""
+    compressionargs: Optional[dict[str, Any]] = None
 
     def to_converter_kwargs(self) -> dict:
         """Return kwargs suitable for passing to ``convert()``.
 
         Delegates to :meth:`ConvertConfig.to_dict` so that config fields are
-        kept in sync.
+        kept in sync.  The ``"none"`` → ``None`` normalization is handled by
+        ``ConvertConfig.__post_init__``.
         """
         from svs_to_ometiff.config import ConvertConfig
 
@@ -34,11 +36,12 @@ class ConversionJob:
             input_svs=self.input_path,
             output_ometiff=self.output_path or "",
             tile_size=self.tile_size,
-            compression=self.compression if self.compression != "none" else None,
+            compression=self.compression,
             num_levels=self.num_levels,
             downsample_factor=self.downsample_factor,
             edge_mode=self.edge_mode,
             temp_dir=self.temp_dir,
+            compressionargs=self.compressionargs,
         )
         d = config.to_dict()
         d["config_or_input_svs"] = d.pop("input_svs")

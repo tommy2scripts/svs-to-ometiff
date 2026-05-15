@@ -11,7 +11,7 @@ import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from xml.sax.saxutils import quoteattr
 
 import numpy as np
@@ -129,6 +129,7 @@ def write_pyramidal_ometiff_from_levels(
     *,
     tile_size: int = 1024,
     compression: Optional[str] = "zlib",
+    compressionargs: Optional[dict[str, Any]] = None,
     image_name: str = "Image",
     magnification: Optional[float] = None,
     verbose: bool = True,
@@ -182,6 +183,7 @@ def write_pyramidal_ometiff_from_levels(
                 subifds=n_subifds if n_subifds else None,
                 tile=(tile_size, tile_size),
                 compression=compression,
+                compressionargs=compressionargs,
                 photometric="rgb",
                 metadata=None,
                 resolution=(1e4 / mpp, 1e4 / mpp),
@@ -197,6 +199,7 @@ def write_pyramidal_ometiff_from_levels(
                     subfiletype=1,
                     tile=(tile_size, tile_size),
                     compression=compression,
+                    compressionargs=compressionargs,
                     photometric="rgb",
                     metadata=None,
                 )
@@ -224,6 +227,7 @@ def write_pyramidal_ometiff(
     *,
     tile_size: int = 1024,
     compression: Optional[str] = "zlib",
+    compressionargs: Optional[dict[str, Any]] = None,
     image_name: str = "Image",
     magnification: Optional[float] = None,
     verbose: bool = True,
@@ -242,6 +246,7 @@ def write_pyramidal_ometiff(
         mpp,
         tile_size=tile_size,
         compression=compression,
+        compressionargs=compressionargs,
         image_name=image_name,
         magnification=magnification,
         verbose=verbose,

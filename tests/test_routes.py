@@ -198,18 +198,18 @@ class TestConvertInlineValidation:
         assert resp.status_code == 400
         assert "divisible" in json.loads(resp.data).get("error", "")
 
-    def test_convert_rejects_jpeg2000_compression_at_route_level(self, client, tmp_svs):
+    def test_convert_rejects_unsupported_compression_at_route_level(self, client, tmp_svs):
         """Route rejects unsupported compression before queueing background work."""
         resp = client.post(
             "/convert",
             data=json.dumps({
                 "input_path": str(tmp_svs),
-                "compression": "jpeg2000",
+                "compression": "bzip2",
             }),
             content_type="application/json",
         )
         assert resp.status_code == 400
-        assert "jpeg2000" in json.loads(resp.data).get("error", "")
+        assert "bzip2" in json.loads(resp.data).get("error", "")
 
     def test_convert_rejects_zero_tile_size(self, client, tmp_svs):
         resp = client.post(

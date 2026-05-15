@@ -41,6 +41,7 @@ _LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
     "tile_progress_interval": 20,
     "progress_logger": None,
     "temp_dir": None,
+    "compressionargs": None,
 }
 
 
@@ -139,6 +140,37 @@ def _raise_write_error_with_context(exc: Exception, compression: Optional[str]) 
         ) from exc
 
     raise exc
+
+
+def _check_codec(compression: Optional[str]) -> None:
+    """Raise ``RuntimeError`` if *compression* requires a codec that is not installed.
+
+    ``"jpeg"`` requires the ``imagecodecs[jpeg]`` extra.
+    ``"jpeg2000"`` requires the ``imagecodecs[jpeg2k]`` extra.
+    """
+    if compression not in ("jpeg", "jpeg2000"):
+        return
+
+    try:
+        import imagecodecs
+    except ImportError:
+        raise RuntimeError(
+            f"Compression {compression!r} requires imagecodecs. "
+            f"Install it: pip install imagecodecs or "
+            f"pip install 'imagecodecs[jpeg2k]' for JPEG 2000 support."
+        )
+
+    # Module-level constants (JPEG / JPEG2K) are only present when the
+    # corresponding codec was compiled into imagecodecs.
+    attr = "JPEG" if compression == "jpeg" else "JPEG2K"
+    if not hasattr(imagecodecs, attr):
+        pkg_extra = "[jpeg]" if compression == "jpeg" else "[jpeg2k]"
+        codec_name = "jpeg" if compression == "jpeg" else "jpeg2k"
+        raise RuntimeError(
+            f"Compression {compression!r} requires the {codec_name!r} codec, "
+            f"which is not installed. Reinstall imagecodecs with the "
+            f"{pkg_extra} extra: pip install 'imagecodecs{pkg_extra}'."
+        )
 
 
 def _stage_level0_memmap(
@@ -287,12 +319,14 @@ def convert(
 
         _log(config.verbose, config.progress_logger, "Writing OME-TIFF...", phase="writing_ometiff", percent=86.0)
         try:
+            _check_codec(config.compression)
             write_pyramidal_ometiff(
                 config.output_ometiff,
                 levels,
                 mpp,
                 tile_size=config.tile_size,
                 compression=config.compression,
+                compressionargs=config.compressionargs,
                 image_name=image_name,
                 magnification=magnification,
                 verbose=config.verbose,

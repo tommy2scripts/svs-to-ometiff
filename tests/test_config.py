@@ -186,7 +186,7 @@ class TestFromDict:
             ConvertConfig.from_dict({
                 "input_svs": "/in.svs",
                 "output_ometiff": "/out.ome.tiff",
-                "compression": "jpeg2000",
+                "compression": "bzip2",
             })
 
 

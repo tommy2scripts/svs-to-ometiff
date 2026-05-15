@@ -5,8 +5,9 @@ Converts Aperio SVS files with compression 33007 (YUYV raw YCbCr 4:2:2)
 to pyramidal OME-TIFF with SubIFD linkage.
 """
 
+import json
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 import click
 
@@ -25,6 +26,20 @@ def _print_experimental_warning() -> None:
     )
 
 
+def _parse_json_dict(_ctx: click.Context, _param: click.Parameter,
+                     value: Optional[str]) -> Optional[dict[str, Any]]:
+    """Parse a JSON string into a dict for --compression-args."""
+    if value is None:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise click.BadParameter(f"invalid JSON: {exc}")
+    if not isinstance(parsed, dict):
+        raise click.BadParameter("must be a JSON object, e.g. '{\"level\":80}'")
+    return parsed
+
+
 @click.command()
 @click.argument("input_svs", type=click.Path(exists=True))
 @click.argument("output_ometiff", type=click.Path())
@@ -38,9 +53,17 @@ def _print_experimental_warning() -> None:
 @click.option(
     "--compression",
     default="zlib",
-    type=click.Choice(["zlib", "lzw", "deflate", "none"]),
+    type=click.Choice(["zlib", "lzw", "deflate", "jpeg", "jpeg2000", "none"]),
     show_default=True,
-    help="TIFF compression scheme. Use 'none' for maximum compatibility.",
+    help="TIFF compression scheme. 'jpeg' is lossy; 'jpeg2000' requires "
+         "imagecodecs[jpeg2k]. Use 'none' for maximum compatibility.",
+)
+@click.option(
+    "--compression-args",
+    default=None,
+    type=str,
+    callback=_parse_json_dict,
+    help="JSON dict of codec-specific arguments, e.g. '{\"level\":80}' for JPEG.",
 )
 @click.option(
     "--num-levels",
@@ -92,6 +115,7 @@ def main(
     output_ometiff: str,
     tile_size: int,
     compression: str,
+    compression_args: Optional[dict[str, Any]],
     num_levels: int,
     downsample_factor: int,
     edge_mode: str,
@@ -114,8 +138,8 @@ def main(
     Example:
 
         svs-to-ometiff slide.svs slide.ome.tiff --tile-size 1024 --compression zlib
-        svs-to-ometiff \
-            /mnt/nas/slides/slide.svs /mnt/nas/out/slide.ome.tiff \
+        svs-to-ometiff \\
+            /mnt/nas/slides/slide.svs /mnt/nas/out/slide.ome.tiff \\
             --temp-dir /local_nvme/svs_tmp
     """
     show_progress = verbose or not quiet
@@ -124,15 +148,13 @@ def main(
     # Experimental warning
     _print_experimental_warning()
 
-    # Compression 'none' means no compression
-    compression_arg: Optional[str] = None if compression == "none" else compression
-
     try:
         convert(
             input_svs,
             output_ometiff,
             tile_size=tile_size,
-            compression=compression_arg,
+            compression=compression,
+            compressionargs=compression_args,
             num_levels=num_levels,
             downsample_factor=downsample_factor,
             edge_mode=edge_mode,

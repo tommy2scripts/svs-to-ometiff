@@ -36,32 +36,32 @@ class TestConvertConfigDefaultsAndErrors:
         assert config.downsample_factor == 2
         assert config.edge_mode == "crop"
 
-    def test_jpeg2000_error_names_unsupported_value(self):
+    def test_unsupported_compression_error_names_value(self):
         from svs_to_ometiff.config import ConvertConfig
-        with pytest.raises(ValueError, match="jpeg2000"):
+        with pytest.raises(ValueError, match="bzip2"):
             ConvertConfig(
                 input_svs="/fake/input.svs",
                 output_ometiff="/fake/output.ome.tiff",
-                compression="jpeg2000",
+                compression="bzip2",
             )
 
-    def test_jpeg2000_error_does_not_say_this_release(self):
+    def test_unsupported_compression_error_does_not_say_this_release(self):
         from svs_to_ometiff.config import ConvertConfig
         with pytest.raises(ValueError) as exc_info:
             ConvertConfig(
                 input_svs="/fake/input.svs",
                 output_ometiff="/fake/output.ome.tiff",
-                compression="jpeg2000",
+                compression="bzip2",
             )
         assert "this release" not in str(exc_info.value)
 
-    def test_jpeg2000_error_mentions_alternatives(self):
+    def test_unsupported_compression_error_mentions_alternatives(self):
         from svs_to_ometiff.config import ConvertConfig
         with pytest.raises(ValueError) as exc_info:
             ConvertConfig(
                 input_svs="/fake/input.svs",
                 output_ometiff="/fake/output.ome.tiff",
-                compression="jpeg2000",
+                compression="bzip2",
             )
         assert "zlib" in str(exc_info.value)
 

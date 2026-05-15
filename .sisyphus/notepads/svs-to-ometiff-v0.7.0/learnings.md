@@ -46,3 +46,28 @@
 - T4 (unspecified-high): Test-only but complex synthetic fixture generation
 - F1-F3 (deep): Oracles need thorough codebase understanding
 - F4 (unspecified-high): Hands-on QA execution
+
+## Task 3: JPEG/JPEG 2000 Compression Support
+
+### Implementation Notes
+
+1. **imagecodecs codec detection**: `imagecodecs` uses module-level constants (`JPEG`, `JPEG2K`) as compile-time capability indicators. The `*_check()` functions are FORMAT DETECTION (they check if data *is* that format), NOT capability detection. The `*_encode()` functions segfault on invalid probe data (e.g., raw bytes without proper image dimensions), so `hasattr(imagecodecs, "JPEG")` is the safe approach.
+
+2. **jpeg_encode signature**: Uses `level` parameter (not `quality`) — `level=80` is equivalent to quality 80. Parameters: `data, level, colorspace, outcolorspace, subsampling, optimize, smoothing, lossless, predictor, bitspersample, out`.
+
+3. **jpeg2k_encode signature**: Uses `level` parameter. Parameters: `data, level, codecformat, colorspace, planar, tile, bitspersample, resolutions, reversible, mct, verbose, numthreads, out`.
+
+4. **"none" → None normalization**: Moved from CLI and models.py into `ConvertConfig.__post_init__`. Uses `object.__setattr__` because ConvertConfig is frozen. Happens before `_validate()` so validation runs against normalized value.
+
+5. **Frozen dataclass field mutation**: `object.__setattr__(self, 'compression', None)` is the correct pattern for modifying frozen dataclass fields in `__post_init__`.
+
+### Test Changes Required
+
+6. **Existing tests that assumed jpeg2000 invalid**:
+   - `test_config.py:test_validation_runs_on_bad_compression` — changed to "bzip2"
+   - `test_config_and_health.py` — 3 tests renamed from `test_jpeg2000_error_*` to `test_unsupported_compression_*`, using "bzip2"
+   - `test_routes.py:test_convert_rejects_jpeg2000_compression_at_route_level` — renamed to `test_convert_rejects_unsupported_compression_at_route_level`, using "bzip2"
+
+### monkeypatch Constraints
+
+7. `monkeypatch.delattr(imagecodecs, "JPEG")` does NOT work because imagecodecs has a `__getattr__` that re-exports, causing `hasattr` to still return True via recursion. Solution: monkeypatch by setting `sys.modules["imagecodecs"] = None` to simulate import failure.
