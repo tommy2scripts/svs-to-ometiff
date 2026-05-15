@@ -1,7 +1,7 @@
 """Configuration objects for svs-to-ometiff conversion."""
 
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, fields
+from typing import Any, Literal, Optional
 
 from svs_to_ometiff.utils import ProgressLogger
 
@@ -27,6 +27,26 @@ class ConvertConfig:
 
     def __post_init__(self) -> None:
         self._validate()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return serializable fields as a plain dict (excludes *progress_logger*)."""
+        result: dict[str, Any] = {}
+        for f in fields(self):
+            if f.name == "progress_logger":
+                continue
+            result[f.name] = getattr(self, f.name)
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ConvertConfig":
+        """Build a ConvertConfig from a dict, using class defaults for missing fields.
+
+        Unknown keys are silently ignored.  Validation (tile_size, compression,
+        etc.) runs via the constructor's ``__post_init__``.
+        """
+        known = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
 
     def _validate(self) -> None:
         if self.tile_size <= 0:

@@ -6,6 +6,7 @@ tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 """
 
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -19,6 +20,15 @@ from svs_to_ometiff.utils import _log
 from svs_to_ometiff.writer import (
     write_pyramidal_ometiff_from_levels as write_pyramidal_ometiff,
 )
+
+# Module-level event that worker signal handlers set to request cancellation.
+# Each worker process has its own copy; check between pipeline stages.
+_shutdown_event = threading.Event()
+
+
+class _ConversionCancelled(Exception):
+    """Raised inside ``convert()`` when a shutdown signal is received."""
+
 
 _LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
     "tile_size": 1024,
@@ -234,9 +244,15 @@ def convert(
     _log(config.verbose, config.progress_logger, f"Temp dir: {temp_dir}", phase="setup", percent=5.0)
 
     try:
+        if _shutdown_event.is_set():
+            raise _ConversionCancelled("Conversion cancelled before tile decoding")
+
         _log(config.verbose, config.progress_logger, "Decoding SVS tiles to disk-backed level 0...", phase="tile_decoding", percent=10.0)
         level0 = _stage_level0_memmap(config, metadata, temp_dir)
         levels = [level0]
+
+        if _shutdown_event.is_set():
+            raise _ConversionCancelled("Conversion cancelled after tile decoding")
 
         mpp = float(metadata["mpp"])
         magnification = metadata.get("magnification")
@@ -265,6 +281,9 @@ def convert(
             progress_logger=config.progress_logger,
         )
         pyramid_shapes = [tuple(np.asarray(level).shape) for level in levels]
+
+        if _shutdown_event.is_set():
+            raise _ConversionCancelled("Conversion cancelled after pyramid building")
 
         _log(config.verbose, config.progress_logger, "Writing OME-TIFF...", phase="writing_ometiff", percent=86.0)
         try:
@@ -297,6 +316,9 @@ def convert(
             phase="complete",
             percent=100.0,
         )
+    except _ConversionCancelled:
+        _cleanup_pyramid_memmaps(levels, temp_dir)
+        raise
     except Exception:
         _cleanup_pyramid_memmaps(levels, temp_dir)
         raise

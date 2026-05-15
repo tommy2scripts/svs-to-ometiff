@@ -6,12 +6,13 @@ and path resolution logic. Flask routes delegate to this service.
 
 import logging
 import re
+import signal
 import threading
 import uuid
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Manager
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from typing import Optional
 
 from svs_to_ometiff.converter import convert
@@ -83,8 +84,28 @@ def resolve_path(path: str) -> Optional[str]:
 # Worker Functions (Must be top-level for multiprocessing)
 # ---------------------------------------------------------------------------
 
+def _install_worker_signal_handlers() -> None:
+    """Install signal handlers in worker processes for graceful cancellation.
+
+    Sets a module-level threading.Event in ``svs_to_ometiff.converter`` so
+    the conversion pipeline can check for cancellation between stages.
+    """
+    from svs_to_ometiff.converter import _shutdown_event as _converter_shutdown_event
+
+    def _handle_worker_shutdown(signum, frame):
+        _converter_shutdown_event.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _handle_worker_shutdown)
+        except (ValueError, OSError):
+            pass
+
+
 def _run_single_conversion_worker(request_id: str, kwargs: dict, m_queue):
     """Run conversion in an isolated process."""
+    _install_worker_signal_handlers()
+
     def progress_callback(message: str, **cb_kwargs):
         event: dict = {"message": message}
         percent = cb_kwargs.get("percent")
@@ -110,6 +131,7 @@ def _run_single_conversion_worker(request_id: str, kwargs: dict, m_queue):
 
 def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir: str, job_template_dict: dict, m_queue):
     """Run batch conversion in an isolated process."""
+    _install_worker_signal_handlers()
     total_files = len(inputs)
     compression = job_template_dict.get("compression")
     if compression == "none":
@@ -209,6 +231,7 @@ class ConversionService:
         self._m_queue = None
         self._manager = None
         self._dispatcher_thread = None
+        self._shutdown_event = threading.Event()
 
     def _ensure_executor(self):
         """Lazily initialize the process pool to avoid spawn recursion."""
@@ -222,9 +245,23 @@ class ConversionService:
     def _dispatch_events(self):
         """Background thread to read from multiprocess queue and write to DB/SSE."""
         while True:
+            if self._shutdown_event.is_set():
+                break
+
             try:
-                request_id, event_type, data = self._m_queue.get()
-                
+                item = self._m_queue.get(timeout=0.5)
+            except Empty:
+                continue  # timeout, loop back to check shutdown event
+            except Exception:
+                if self._shutdown_event.is_set():
+                    break
+                continue
+
+            try:
+                request_id, event_type, data = item
+                if request_id == "__shutdown__":
+                    break
+
                 # Update SQLite
                 if event_type == "progress":
                     pct = data.get("percent", 0.0)
@@ -320,3 +357,50 @@ class ConversionService:
     @staticmethod
     def inspect_slide(path: str) -> dict:
         return inspect_svs(path)
+
+    # ------------------------------------------------------------------
+    # Graceful shutdown
+    # ------------------------------------------------------------------
+    def shutdown(self, timeout_seconds: int = 10) -> None:
+        """Gracefully stop all conversions, cancel workers, and release resources."""
+        log = logging.getLogger(__name__)
+        log.info("ConversionService shutdown initiated (timeout=%ds)", timeout_seconds)
+
+        self._shutdown_event.set()
+
+        # Cancel running futures and terminate worker processes
+        if self._executor is not None:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
+
+        # Unblock SSE progress readers with a shutdown error event
+        shutdown_error = {"error": "Server shutting down — conversion cancelled"}
+        for rid, queue in list(self.progress_queues.items()):
+            try:
+                queue.put_nowait(("error", shutdown_error))
+            except Exception:
+                pass
+
+        # Unblock the dispatch thread with a sentinel
+        if self._m_queue is not None:
+            try:
+                self._m_queue.put(("__shutdown__", "shutdown", {}), timeout=1)
+            except Exception:
+                pass
+
+        # Wait for the dispatch thread to finish
+        if self._dispatcher_thread is not None and self._dispatcher_thread.is_alive():
+            self._dispatcher_thread.join(timeout=timeout_seconds)
+
+        # Tear down the multiprocessing manager
+        if self._manager is not None:
+            try:
+                self._manager.shutdown()
+            except Exception:
+                pass
+            self._manager = None
+
+        self._m_queue = None
+        self._dispatcher_thread = None
+        self.active_jobs.clear()
+        log.info("ConversionService shutdown complete")

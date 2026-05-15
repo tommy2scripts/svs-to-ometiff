@@ -11,6 +11,7 @@ Opens browser at http://127.0.0.1:8765
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -35,6 +36,52 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("svs_to_ometiff_gui")
+
+# ---------------------------------------------------------------------------
+# Environment detection helpers
+# ---------------------------------------------------------------------------
+
+def _is_running_under_gunicorn() -> bool:
+    return "gunicorn" in os.environ.get("SERVER_SOFTWARE", "") or any(
+        "gunicorn" in str(arg) for arg in sys.argv
+    )
+
+
+def _is_running_under_pytest() -> bool:
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
+# ---------------------------------------------------------------------------
+# Signal handlers
+# ---------------------------------------------------------------------------
+
+def _install_gunicorn_sigterm_handler() -> None:
+    """Install a SIGTERM handler for graceful shutdown under gunicorn.
+
+    Gunicorn sends SIGTERM to workers as part of its graceful restart
+    protocol.  The handler calls ``ConversionService.shutdown()`` and
+    then exits the worker cleanly.
+    """
+    if _is_running_under_pytest():
+        return
+
+    def _sigterm_handler(signum: int, frame) -> None:  # noqa: ARG001
+        logger.info("Received SIGTERM from gunicorn — initiating graceful shutdown")
+        try:
+            app.config["CONVERSION_SERVICE"].shutdown(timeout_seconds=5)
+        except Exception:
+            logger.exception("Error during gunicorn shutdown")
+        os._exit(0)
+
+    try:
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+        logger.info("Installed gunicorn SIGTERM handler")
+    except ValueError:
+        pass  # not in main thread
+
+
+if _is_running_under_gunicorn():
+    _install_gunicorn_sigterm_handler()
 
 app = Flask(__name__)
 app.config["CONVERSION_SERVICE"] = ConversionService()
@@ -392,6 +439,24 @@ def health_check():
 
 def main():
     logger.info(WARNING_BANNER)
+
+    # Install Werkzeug SIGINT handler (skip during pytest runs)
+    if not _is_running_under_pytest():
+        original_sigint = signal.getsignal(signal.SIGINT)
+
+        def _sigint_handler(signum, frame):  # noqa: ARG001
+            logger.info("Received SIGINT — initiating graceful shutdown")
+            try:
+                app.config["CONVERSION_SERVICE"].shutdown(timeout_seconds=5)
+            except Exception:
+                logger.exception("Error during SIGINT shutdown")
+            # Re-install original handler and re-send signal for Werkzeug
+            if original_sigint not in (signal.SIG_DFL, None):
+                signal.signal(signal.SIGINT, original_sigint)
+            os.kill(os.getpid(), signal.SIGINT)
+
+        signal.signal(signal.SIGINT, _sigint_handler)
+
     url = f"http://{_config.HOST}:{_config.PORT}"
     logger.info("Opening browser at %s", url)
     webbrowser.open(url)

@@ -23,17 +23,28 @@ class ConversionJob:
     request_id: str = ""
 
     def to_converter_kwargs(self) -> dict:
-        """Return kwargs suitable for passing to ``convert()``."""
-        return {
-            "config_or_input_svs": self.input_path,
-            "output_ometiff": self.output_path or None,
-            "tile_size": self.tile_size,
-            "compression": self.compression if self.compression != "none" else None,
-            "num_levels": self.num_levels,
-            "downsample_factor": self.downsample_factor,
-            "edge_mode": self.edge_mode,
-            "temp_dir": self.temp_dir,
-        }
+        """Return kwargs suitable for passing to ``convert()``.
+
+        Delegates to :meth:`ConvertConfig.to_dict` so that config fields are
+        kept in sync.
+        """
+        from svs_to_ometiff.config import ConvertConfig
+
+        config = ConvertConfig(
+            input_svs=self.input_path,
+            output_ometiff=self.output_path or "",
+            tile_size=self.tile_size,
+            compression=self.compression if self.compression != "none" else None,
+            num_levels=self.num_levels,
+            downsample_factor=self.downsample_factor,
+            edge_mode=self.edge_mode,
+            temp_dir=self.temp_dir,
+        )
+        d = config.to_dict()
+        d["config_or_input_svs"] = d.pop("input_svs")
+        if not self.output_path:
+            d["output_ometiff"] = None
+        return d
 
 
 @dataclass

@@ -1,0 +1,42 @@
+Task 1: Pre-flight Checks
+=========================
+Date: 2026-05-15
+Executed by: Sisyphus-Junior
+
+--- CHECK 1: Tag v0.6.1 exists on remote and points to b7c0e79 ---
+RESULT: PASS
+- Tag v0.6.1 exists on remote: YES
+- Tag type: annotated tag (object hash 49e75d5)
+- Tag points to commit: b7c0e79238e98a42298cc9e8eba7aa259360049b
+- Commit message: "fix: prepare v0.6.1 hotfix"
+
+--- CHECK 2: Version "0.6.1" in pyproject.toml ---
+RESULT: PASS
+- Line 7: version = "0.6.1"
+
+--- CHECK 3: Version "0.6.1" in src/svs_to_ometiff/__init__.py ---
+RESULT: PASS
+- Line: __version__ = "0.6.1"
+
+--- CHECK 4: No secrets detected in git history ---
+RESULT: PASS
+- Scanned git history for: api_key, api.secret, password, secret_key, sk_live, pk_live, ghp_, gho_, ghu_
+- No matches found in committed file diffs
+
+--- CHECK 5: All URLs are HTTPS (not git@ or ssh://) ---
+RESULT: PASS
+- pyproject.toml [project.urls] section:
+  - Homepage: https://github.com/tommy2scripts/svs-to-ometiff
+  - Repository: https://github.com/tommy2scripts/svs-to-ometiff
+  - Bug Tracker: https://github.com/tommy2scripts/svs-to-ometiff/issues
+- All project URLs use HTTPS. No git@ or ssh:// URLs found in project files.
+- NOTE: git remote uses git@github.com:... (SSH) but this is expected for git operations.
+
+--- CHECK 6: LICENSE file present ---
+RESULT: PASS
+- File: LICENSE (1084 bytes, last modified 2026-05-12)
+
+--- CHECK 7: No blobs >10MB in git history ---
+RESULT: PASS
+- Scanned all objects in git history for size > 10,000,000 bytes
+- No large blobs found
