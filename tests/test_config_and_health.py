@@ -11,7 +11,7 @@ class TestPackageVersion:
 
     def test_version_is_0_6_1(self):
         from svs_to_ometiff import __version__
-        assert __version__ == "0.6.1"
+        assert __version__ == "0.7.0"
 
     def test_version_string_format(self):
         from svs_to_ometiff import __version__
@@ -92,7 +92,7 @@ class TestHealthCheck:
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data["status"] == "ok"
-        assert data["version"] == "0.6.1"
+        assert data["version"] == "0.7.0"
         assert "active_jobs" in data
 
     def test_health_shows_no_active_jobs(self, client):
