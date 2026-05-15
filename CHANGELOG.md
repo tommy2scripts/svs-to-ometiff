@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-15
+
+### Added
+- **JPEG/JPEG 2000 compression support**: `--compression jpeg` and `--compression jpeg2000` CLI options with runtime codec availability detection via `imagecodecs`. JPEG 2000 provides lossless compression; JPEG is lossy with configurable quality via `--compression-args`.
+- **ConvertConfig serialization**: `to_dict()` and `from_dict()` methods on the frozen dataclass for API integration, job queue replay, and persistence. Round-trip safe with automatic validation.
+- **Graceful shutdown signal handling**: SIGINT (Ctrl+C) and SIGTERM handlers for clean worker termination, temp file cleanup, and in-flight conversion cancellation with checkpoint-based recovery.
+- **Large-file integration tests**: `pytest.mark.slow` tests with 2048×2048 and 16384×16384 synthetic SVS fixtures covering tile counts, edge-tile padding, SubIFD validation, memory-path verification, and JPEG 2000 round-trip pixel fidelity.
+
+### Changed
+- `_SUPPORTED_COMPRESSION` extended to include `"jpeg"` and `"jpeg2000"`.
+- `"none"` → `None` compression normalization moved from CLI into `ConvertConfig.__post_init__` for consistency across all entry points.
+
 ## [0.6.1] - 2026-05-14
 
 ### Fixed

@@ -13,7 +13,7 @@ Modules:
     cli           — Click-based command-line interface
 """
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 __all__ = [
     "yuyv_to_rgb",
     "read_svs_full_image",
