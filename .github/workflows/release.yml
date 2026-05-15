@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to release (e.g. v0.6.1)"
+        required: true
+        default: "v0.6.1"
+        type: string
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.validate-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Validate tag exists on remote
+        run: |
+          if git ls-remote --tags origin ${{ inputs.tag }} | grep -q .; then
+            echo "✓ Tag ${{ inputs.tag }} exists on remote"
+          else
+            echo "::error::Tag '${{ inputs.tag }}' not found on remote origin"
+            exit 1
+          fi
+
+      - name: Validate version consistency
+        id: validate-version
+        run: |
+          TAG_VER="${{ inputs.tag }}"
+          TAG_VER="${TAG_VER#v}"
+          PYPROJ_VER="$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')"
+          INIT_VER="$(grep '__version__' src/svs_to_ometiff/__init__.py | sed 's/__version__ = "\(.*\)"/\1/')"
+
+          echo "Tag version: $TAG_VER"
+          echo "pyproject.toml: $PYPROJ_VER"
+          echo "__init__.py: $INIT_VER"
+
+          if [ "$TAG_VER" != "$PYPROJ_VER" ]; then
+            echo "::error::Version mismatch: tag ($TAG_VER) != pyproject.toml ($PYPROJ_VER)"
+            exit 1
+          fi
+          if [ "$TAG_VER" != "$INIT_VER" ]; then
+            echo "::error::Version mismatch: tag ($TAG_VER) != __init__.py ($INIT_VER)"
+            exit 1
+          fi
+          echo "✓ All version strings match: $TAG_VER"
+          echo "version=$TAG_VER" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel and sdist
+        run: |
+          pip install build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # Required for OIDC-based PyPI trusted publishing
+      contents: write   # Required for GitHub Release creation
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        id: pypi-publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        continue-on-error: true
+        with:
+          verbose: true
+      - name: Handle PyPI publish result
+        if: steps.pypi-publish.outcome == 'failure'
+        run: |
+          echo "::notice::PyPI publish failed — the version may already exist on PyPI. Proceeding to create GitHub Release."
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        continue-on-error: true
+        with:
+          tag_name: ${{ inputs.tag }}
+          generate_release_notes: true
