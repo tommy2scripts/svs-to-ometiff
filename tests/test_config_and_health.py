@@ -9,9 +9,9 @@ import pytest
 class TestPackageVersion:
     """Tests that the package version matches what was set in this PR."""
 
-    def test_version_is_0_5_1(self):
+    def test_version_is_0_6_1(self):
         from svs_to_ometiff import __version__
-        assert __version__ == "0.5.1"
+        assert __version__ == "0.6.1"
 
     def test_version_string_format(self):
         from svs_to_ometiff import __version__
@@ -20,12 +20,25 @@ class TestPackageVersion:
         assert all(p.isdigit() for p in parts)
 
 
-class TestConvertConfigJpeg2000ErrorMessage:
-    """Tests that the jpeg2000 error message in config.py refers to '0.5.1'."""
+class TestConvertConfigDefaultsAndErrors:
+    """Tests for public conversion defaults and compression validation."""
 
-    def test_jpeg2000_error_mentions_version_0_5_1(self):
+    def test_defaults_match_public_cli_gui_profile(self):
         from svs_to_ometiff.config import ConvertConfig
-        with pytest.raises(ValueError, match="0.5.1"):
+
+        config = ConvertConfig(
+            input_svs="/fake/input.svs",
+            output_ometiff="/fake/output.ome.tiff",
+        )
+        assert config.tile_size == 1024
+        assert config.compression == "zlib"
+        assert config.num_levels == 6
+        assert config.downsample_factor == 2
+        assert config.edge_mode == "crop"
+
+    def test_jpeg2000_error_names_unsupported_value(self):
+        from svs_to_ometiff.config import ConvertConfig
+        with pytest.raises(ValueError, match="jpeg2000"):
             ConvertConfig(
                 input_svs="/fake/input.svs",
                 output_ometiff="/fake/output.ome.tiff",
@@ -79,7 +92,7 @@ class TestHealthCheck:
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data["status"] == "ok"
-        assert data["version"] == "0.5.1"
+        assert data["version"] == "0.6.1"
         assert "active_jobs" in data
 
     def test_health_shows_no_active_jobs(self, client):

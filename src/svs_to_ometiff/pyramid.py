@@ -195,6 +195,24 @@ def build_pyramid_memmaps(
 _CLEANUP_RETRY_DELAYS = [0.5, 1.0, 2.0]
 
 
+def close_memmap_array(arr: np.ndarray) -> None:
+    """Flush and close a numpy memmap without failing for regular arrays."""
+    if not isinstance(arr, np.memmap):
+        return
+
+    try:
+        arr.flush()
+    except Exception:
+        pass
+
+    mmap_obj = getattr(arr, "_mmap", None)
+    if mmap_obj is not None:
+        try:
+            mmap_obj.close()
+        except Exception:
+            pass
+
+
 def cleanup_pyramid_memmaps(
     levels: list[np.ndarray],
     temp_dir: str,
@@ -215,15 +233,7 @@ def cleanup_pyramid_memmaps(
     """
     # 1. Flush and close all memmaps explicitly
     for level in levels:
-        if isinstance(level, np.memmap):
-            try:
-                level.flush()
-            except Exception:
-                pass
-            try:
-                level.close()
-            except Exception:
-                pass
+        close_memmap_array(level)
     levels.clear()
 
     # 2. Run GC to release any file handles

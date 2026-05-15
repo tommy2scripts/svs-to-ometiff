@@ -5,6 +5,7 @@ The public ``convert`` function mirrors the CLI pipeline: read Aperio 33007
 tiles, decode YUYV to RGB, build a pyramid, and write pyramidal OME-TIFF.
 """
 
+import tempfile
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -19,12 +20,10 @@ from svs_to_ometiff.writer import (
     write_pyramidal_ometiff_from_levels as write_pyramidal_ometiff,
 )
 
-import tempfile
-
 _LEGACY_CONFIG_DEFAULTS: dict[str, object] = {
-    "tile_size": 512,
-    "compression": None,
-    "num_levels": 3,
+    "tile_size": 1024,
+    "compression": "zlib",
+    "num_levels": 6,
     "downsample_factor": 2,
     "edge_mode": "crop",
     "image_name": None,
@@ -132,50 +131,6 @@ def _raise_write_error_with_context(exc: Exception, compression: Optional[str]) 
     raise exc
 
 
-def _flush_and_release_memmaps(levels: list[np.ndarray]) -> None:
-    for level in levels:
-        if isinstance(level, np.memmap):
-            level.flush()
-            mm = getattr(level, "_mmap", None)
-            if mm is not None:
-                mm.close()
-
-
-def _cleanup_temp_dir(
-    temp_dir: str,
-    *,
-    output_ometiff: str,
-    write_succeeded: bool,
-    verbose: bool,
-    progress_logger: Optional[object],
-) -> None:
-    max_attempts = 6
-    delay_seconds = 0.2
-    last_error: Optional[PermissionError] = None
-    for attempt in range(1, max_attempts + 1):
-        try:
-            shutil.rmtree(temp_dir)
-            return
-        except PermissionError as exc:
-            last_error = exc
-            if attempt < max_attempts:
-                time.sleep(delay_seconds)
-                continue
-            break
-
-    output_exists = Path(output_ometiff).exists()
-    if write_succeeded and output_exists and last_error is not None:
-        _log(
-            verbose,
-            progress_logger,
-            f"WARNING: Could not remove temporary directory '{temp_dir}': {last_error}",
-        )
-        return
-
-    if last_error is not None:
-        raise last_error
-
-
 def _stage_level0_memmap(
     config: ConvertConfig,
     metadata: dict[str, object],
@@ -273,17 +228,15 @@ def convert(
         )
 
     temp_base_dir = config.temp_dir if config.temp_dir is not None else tempfile.gettempdir()
+    Path(temp_base_dir).mkdir(parents=True, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(prefix="svs_to_ometiff_", dir=temp_base_dir)
     levels: list[np.ndarray] = []
-
-    # Determine temp directory base: prefer config.temp_dir, then system temp (avoid network drives)
-    _temp_base = config.temp_dir if config.temp_dir else None
-    temp_dir_obj = tempfile.TemporaryDirectory(prefix="svs_to_ometiff_", dir=_temp_base)
-    temp_dir = temp_dir_obj.name
     _log(config.verbose, config.progress_logger, f"Temp dir: {temp_dir}", phase="setup", percent=5.0)
 
     try:
         _log(config.verbose, config.progress_logger, "Decoding SVS tiles to disk-backed level 0...", phase="tile_decoding", percent=10.0)
         level0 = _stage_level0_memmap(config, metadata, temp_dir)
+        levels = [level0]
 
         mpp = float(metadata["mpp"])
         magnification = metadata.get("magnification")
@@ -326,22 +279,8 @@ def convert(
                 verbose=config.verbose,
                 progress_logger=config.progress_logger,
             )
-            write_succeeded = True
         except Exception as exc:
             _raise_write_error_with_context(exc, config.compression)
-        finally:
-            _flush_and_release_memmaps(levels)
-            levels.clear()
-            level0 = None
-            gc.collect()
-    finally:
-        _cleanup_temp_dir(
-            temp_dir,
-            output_ometiff=config.output_ometiff,
-            write_succeeded=write_succeeded,
-            verbose=config.verbose,
-            progress_logger=config.progress_logger,
-        )
 
         output_size = Path(config.output_ometiff).stat().st_size
         result: dict[str, object] = {
@@ -359,20 +298,11 @@ def convert(
             percent=100.0,
         )
     except Exception:
-        # Ensure cleanup on error
-        _close_memmaps(levels)
-        try:
-            temp_dir_obj.cleanup()
-        except Exception:
-            pass
+        _cleanup_pyramid_memmaps(levels, temp_dir)
         raise
     else:
-        # Output was written successfully. Clean up temp dir with Windows-safe retry.
-        # Even if cleanup fails, the conversion is still successful — only warn.
-        try:
-            temp_dir_obj.cleanup()
-        except Exception:
-            pass
+        # Output was written successfully. Even if cleanup fails, conversion
+        # remains successful and the caller gets a warning with the temp path.
         cleanup_warning = _cleanup_pyramid_memmaps(levels, temp_dir)
         if cleanup_warning:
             result["cleanup_warning"] = cleanup_warning

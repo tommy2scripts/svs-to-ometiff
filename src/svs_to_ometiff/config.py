@@ -14,9 +14,9 @@ class ConvertConfig:
 
     input_svs: str
     output_ometiff: str
-    tile_size: int = 512
-    compression: Optional[str] = None
-    num_levels: int = 3
+    tile_size: int = 1024
+    compression: Optional[str] = "zlib"
+    num_levels: int = 6
     downsample_factor: int = 2
     edge_mode: Literal["crop", "pad"] = "crop"
     image_name: Optional[str] = None
@@ -40,8 +40,8 @@ class ConvertConfig:
         if self.compression not in _SUPPORTED_COMPRESSION:
             if self.compression == "jpeg2000":
                 raise ValueError(
-                    "compression='jpeg2000' is not supported by svs-to-ometiff "
-                    "this release. Use 'zlib', 'lzw', 'deflate', or None/'none'; "
+                    "compression='jpeg2000' is not supported by svs-to-ometiff. "
+                    "Use 'zlib', 'lzw', 'deflate', or None/'none'; "
                     "recompress the output separately if JPEG 2000 is required."
                 )
             raise ValueError(

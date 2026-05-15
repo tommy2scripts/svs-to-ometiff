@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from svs_to_ometiff_gui.models import ConversionJob
+from svs_to_ometiff_gui import services
 from svs_to_ometiff_gui.services import ConversionService, _run_single_conversion_worker
 
 
@@ -29,3 +30,25 @@ def test_start_conversion_submits_worker_with_expected_args() -> None:
     assert kwargs == {}
     assert args[0] is _run_single_conversion_worker
     assert args[1:] == (request_id, job.to_converter_kwargs(), m_queue)
+
+
+def test_single_worker_sends_cleanup_warning_on_complete(monkeypatch) -> None:
+    events = []
+
+    class FakeQueue:
+        def put(self, event):
+            events.append(event)
+
+    monkeypatch.setattr(
+        services,
+        "convert",
+        lambda **_kwargs: {"cleanup_warning": "cleanup failed: C:\\tmp\\svs"},
+    )
+
+    _run_single_conversion_worker("req-1", {"input_svs": "in", "output_ometiff": "out"}, FakeQueue())
+
+    assert events[-1] == (
+        "req-1",
+        "complete",
+        {"cleanup_warning": "cleanup failed: C:\\tmp\\svs"},
+    )

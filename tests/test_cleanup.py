@@ -4,16 +4,14 @@ These tests verify that cleanup failures after a successful write are handled
 gracefully — the conversion is marked complete with a warning rather than an error.
 """
 
-import gc
 import shutil
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
-import pytest
-
 from svs_to_ometiff.pyramid import (
+    close_memmap_array,
     cleanup_pyramid_memmaps,
 )
 
@@ -23,6 +21,10 @@ from svs_to_ometiff.pyramid import (
 
 
 class TestCleanupPyramidMemmaps:
+    def test_close_memmap_array_tolerates_regular_ndarray(self) -> None:
+        """The canonical close helper is a no-op for regular ndarrays."""
+        close_memmap_array(np.zeros((2, 2, 3), dtype=np.uint8))
+
     def test_cleanup_normal(self, tmp_path: Path) -> None:
         """Normal cleanup: memmaps closed, temp dir removed."""
         temp_dir = str(tmp_path / "temp_memmaps")
@@ -87,8 +89,6 @@ class TestCleanupPyramidMemmaps:
         temp_dir = str(tmp_path / "stuck_temp")
         Path(temp_dir).mkdir(parents=True)
 
-        original_rmtree = shutil.rmtree
-
         def _always_failing_rmtree(path, *a, **kw):
             raise PermissionError(f"Cannot delete {path}: locked by another process")
 
@@ -140,6 +140,132 @@ class TestCleanupFailureOnWriteSuccess:
         import stat
         locked_file.chmod(stat.S_IWUSR | stat.S_IWGRP)
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_convert_returns_cleanup_warning_after_success(
+        self,
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        """Successful writes stay successful when only temp cleanup fails."""
+        from svs_to_ometiff import converter
+        from svs_to_ometiff.config import ConvertConfig
+
+        input_svs = tmp_path / "slide.svs"
+        output = tmp_path / "slide.ome.tiff"
+        temp_root = tmp_path / "temp_root"
+        input_svs.write_bytes(b"not used")
+
+        monkeypatch.setattr(
+            converter,
+            "read_svs_metadata",
+            lambda _path: {
+                "compression": 33007,
+                "width": 16,
+                "height": 16,
+                "src_tile_width": 16,
+                "src_tile_height": 16,
+                "tile_count": 1,
+                "mpp": 0.5,
+                "magnification": 20,
+            },
+        )
+
+        captured_temp_dirs = []
+
+        def fake_stage(_config, _metadata, temp_dir):
+            captured_temp_dirs.append(temp_dir)
+            return np.zeros((16, 16, 3), dtype=np.uint8)
+
+        def fake_write(path, *_args, **_kwargs):
+            Path(path).write_bytes(b"ome")
+
+        monkeypatch.setattr(converter, "_stage_level0_memmap", fake_stage)
+        monkeypatch.setattr(
+            converter,
+            "build_pyramid_memmaps",
+            lambda level0, *_args, **_kwargs: [level0],
+        )
+        monkeypatch.setattr(converter, "write_pyramidal_ometiff", fake_write)
+        monkeypatch.setattr(
+            converter,
+            "_cleanup_pyramid_memmaps",
+            lambda _levels, temp_dir: f"cleanup failed: {temp_dir}",
+        )
+
+        result = converter.convert(
+            ConvertConfig(
+                input_svs=str(input_svs),
+                output_ometiff=str(output),
+                temp_dir=str(temp_root),
+                verbose=False,
+            )
+        )
+
+        assert output.exists()
+        assert result["cleanup_warning"].startswith("cleanup failed:")
+        assert captured_temp_dirs
+        assert Path(captured_temp_dirs[0]).parent == temp_root
+
+    def test_convert_preserves_original_error_when_write_fails(
+        self,
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        """Cleanup after failed writes must not mask the write exception."""
+        from svs_to_ometiff import converter
+        from svs_to_ometiff.config import ConvertConfig
+
+        input_svs = tmp_path / "slide.svs"
+        output = tmp_path / "slide.ome.tiff"
+        input_svs.write_bytes(b"not used")
+
+        monkeypatch.setattr(
+            converter,
+            "read_svs_metadata",
+            lambda _path: {
+                "compression": 33007,
+                "width": 16,
+                "height": 16,
+                "src_tile_width": 16,
+                "src_tile_height": 16,
+                "tile_count": 1,
+                "mpp": 0.5,
+                "magnification": None,
+            },
+        )
+        monkeypatch.setattr(
+            converter,
+            "_stage_level0_memmap",
+            lambda *_args: np.zeros((16, 16, 3), dtype=np.uint8),
+        )
+        monkeypatch.setattr(
+            converter,
+            "build_pyramid_memmaps",
+            lambda level0, *_args, **_kwargs: [level0],
+        )
+        monkeypatch.setattr(
+            converter,
+            "write_pyramidal_ometiff",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("write failed")),
+        )
+        monkeypatch.setattr(
+            converter,
+            "_cleanup_pyramid_memmaps",
+            lambda _levels, _temp_dir: "cleanup failed too",
+        )
+
+        try:
+            converter.convert(
+                ConvertConfig(
+                    input_svs=str(input_svs),
+                    output_ometiff=str(output),
+                    verbose=False,
+                )
+            )
+        except RuntimeError as exc:
+            assert str(exc) == "write failed"
+        else:
+            raise AssertionError("convert should have raised the write failure")
 
 
 class TestTempDirConfig:

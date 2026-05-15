@@ -70,12 +70,6 @@ def _print_experimental_warning() -> None:
     help="Name for the OME Image element (default: derived from input filename).",
 )
 @click.option(
-    "--temp-dir",
-    type=click.Path(),
-    default=None,
-    help="Directory for temporary staging files (use a local SSD when reading/writing over network shares).",
-)
-@click.option(
     "--quiet",
     is_flag=True,
     help="Suppress progress output.",
@@ -102,7 +96,6 @@ def main(
     downsample_factor: int,
     edge_mode: str,
     image_name: Optional[str],
-    temp_dir: Optional[str],
     quiet: bool,
     verbose: bool,
     temp_dir: Optional[str],
@@ -120,7 +113,7 @@ def main(
 
     Example:
 
-        svs-to-ometiff slide.svs slide.ome.tiff --tile-size 512 --compression none
+        svs-to-ometiff slide.svs slide.ome.tiff --tile-size 1024 --compression zlib
         svs-to-ometiff \
             /mnt/nas/slides/slide.svs /mnt/nas/out/slide.ome.tiff \
             --temp-dir /local_nvme/svs_tmp
@@ -144,7 +137,6 @@ def main(
             downsample_factor=downsample_factor,
             edge_mode=edge_mode,
             image_name=image_name,
-            temp_dir=temp_dir,
             verbose=show_progress,
             tile_progress_interval=tile_progress_interval,
             temp_dir=temp_dir,

@@ -81,6 +81,18 @@ svs-to-ometiff slide.svs slide.ome.tiff \
   --edge-mode crop
 ```
 
+Recommended workflow:
+
+```bash
+svs-to-ometiff-inspect input.svs
+svs-to-ometiff input.svs output.ome.tiff \
+  --tile-size 1024 \
+  --compression zlib \
+  --num-levels 6 \
+  --edge-mode crop
+svs-to-ometiff-verify output.ome.tiff --min-levels 6
+```
+
 Batch-convert a directory or glob:
 
 ```bash
@@ -102,6 +114,9 @@ The converter uses disk-backed arrays for pyramid construction, but large slides
 can still need many gigabytes of free disk space and enough RAM for tile buffers,
 writer buffers, and the operating-system page cache. Start with one conversion
 at a time and verify available space before processing a batch.
+
+For Xenium-style workflows, use `--edge-mode crop` unless you specifically need
+to preserve padded edge dimensions.
 
 ## GUI usage
 
@@ -207,6 +222,27 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 svs-to-ometiff-gui
 ```
+
+**Recommended Windows conversion workflow**
+
+Use a local temp directory, especially when reading from or writing to mapped
+network drives:
+
+```powershell
+mkdir C:\svs_to_ometiff_tmp
+svs-to-ometiff input.svs output.ome.tiff `
+  --tile-size 1024 `
+  --compression zlib `
+  --num-levels 6 `
+  --edge-mode crop `
+  --temp-dir C:\svs_to_ometiff_tmp
+svs-to-ometiff-verify output.ome.tiff --min-levels 6
+```
+
+When possible, convert with temporary files on a local SSD, verify the output,
+open it in QuPath as a sanity check, and then copy the final OME-TIFF back to
+the server. Final acceptance for post-Xenium work should be successful import
+and alignment in Xenium Explorer.
 
 **`Convertible: no` or "only supports Aperio compression 33007"**
 

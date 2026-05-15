@@ -12,9 +12,9 @@ from svs_to_ometiff.config import ConvertConfig
 def _simulate_gui_params(
     input_path: str = "/fake/input.svs",
     output_path: str = "/fake/output.ome.tiff",
-    tile_size: str = "512",
-    compression: str = "none",
-    num_levels: str = "3",
+    tile_size: str = "1024",
+    compression: str = "zlib",
+    num_levels: str = "6",
     downsample_factor: str = "2",
     edge_mode: str = "crop",
 ) -> ConvertConfig:
@@ -32,10 +32,10 @@ def _simulate_gui_params(
     )
 
 
-def test_gui_params_default_compression_is_none() -> None:
-    """GUI sends compression='none' by default → ConvertConfig stores None."""
+def test_gui_params_default_compression_is_zlib() -> None:
+    """GUI sends compression='zlib' by default."""
     config = _simulate_gui_params()
-    assert config.compression is None
+    assert config.compression == "zlib"
 
 
 def test_gui_params_explicit_lzw_compression() -> None:
@@ -64,16 +64,16 @@ def test_gui_params_edge_mode_default_crop() -> None:
     assert config.edge_mode == "crop"
 
 
-def test_gui_params_default_tile_size_is_512() -> None:
-    """GUI default tile_size changed to 512 in this PR (was 1024)."""
+def test_gui_params_default_tile_size_is_1024() -> None:
+    """GUI default tile_size matches the public profile."""
     config = _simulate_gui_params()
-    assert config.tile_size == 512
+    assert config.tile_size == 1024
 
 
-def test_gui_params_default_num_levels_is_3() -> None:
-    """GUI default num_levels changed to 3 in this PR (was 6)."""
+def test_gui_params_default_num_levels_is_6() -> None:
+    """GUI default num_levels matches the public profile."""
     config = _simulate_gui_params()
-    assert config.num_levels == 3
+    assert config.num_levels == 6
 
 
 def test_gui_params_none_compression_stored_as_none() -> None:

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-05-14
+
+### Fixed
+- Restores package importability after the broken `0.6.0` release by removing
+  duplicate `--temp-dir` CLI parameters and stale converter cleanup code.
+- Consolidates Windows-safe memmap cleanup into one retrying temp-directory
+  lifecycle so cleanup-only failures are reported as warnings after successful
+  writes.
+- Aligns Python API defaults with CLI and GUI defaults: 1024 tile size, zlib
+  compression, six pyramid levels, and crop edge handling.
+- Carries GUI cleanup warnings to the browser without marking completed
+  conversions as failed.
+
+### Changed
+- Verifier output now reports SubIFD count, tile size, and physical pixel size
+  / MPP metadata when available, with missing MPP treated as a warning.
+- README adds the recommended inspect, convert, verify workflow plus Windows
+  local-temp guidance for network-drive workflows.
+
 ## [0.6.0] - 2026-05-13
 ### Added
 - Configurable --temp-dir option for CLI and batch modes

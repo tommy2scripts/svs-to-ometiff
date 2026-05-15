@@ -97,8 +97,12 @@ def _run_single_conversion_worker(request_id: str, kwargs: dict, m_queue):
         m_queue.put((request_id, "progress", event))
 
     try:
-        convert(**kwargs, progress_logger=progress_callback)
-        m_queue.put((request_id, "complete", {}))
+        result = convert(**kwargs, progress_logger=progress_callback)
+        complete_data = {}
+        cleanup_warning = result.get("cleanup_warning")
+        if cleanup_warning:
+            complete_data["cleanup_warning"] = cleanup_warning
+        m_queue.put((request_id, "complete", complete_data))
     except Exception as exc:  # noqa: BLE001
         logging.exception("Single conversion worker failed")
         m_queue.put((request_id, "error", {"error": str(exc)}))
@@ -147,7 +151,7 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
                     event["phase"] = cb_kwargs["phase"]
                 m_queue.put((request_id, "progress", event))
 
-            convert(
+            result = convert(
                 config_or_input_svs=input_path,
                 output_ometiff=output_path,
                 tile_size=job_template_dict.get("tile_size", 1024),
@@ -158,6 +162,18 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
                 temp_dir=job_template_dict.get("temp_dir"),
                 progress_logger=progress_callback,
             )
+            cleanup_warning = result.get("cleanup_warning")
+            if cleanup_warning:
+                m_queue.put((request_id, "progress", {
+                    "message": f"Completed {filename}, but temporary cleanup failed: {cleanup_warning}",
+                    "file": filename,
+                    "file_idx": idx,
+                    "total_files": total_files,
+                    "percent": 100,
+                    "overall_percent": ((idx + 1) * 100) / total_files,
+                    "phase": "cleanup_warning",
+                    "cleanup_warning": cleanup_warning,
+                }))
 
             m_queue.put((request_id, "progress", {
                 "message": f"Completed {filename}",

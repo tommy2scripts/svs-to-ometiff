@@ -185,8 +185,8 @@ class TestBatchConvertRoute:
 class TestConvertInlineValidation:
     """Tests for the new inline validation added in the PR (no ConvertConfig delegation)."""
 
-    def test_convert_accepts_tile_size_not_divisible_by_16(self, client, tmp_svs):
-        """Route no longer checks divisibility by 16 — that was removed in this PR."""
+    def test_convert_rejects_tile_size_not_divisible_by_16(self, client, tmp_svs):
+        """Route validates with ConvertConfig before queueing background work."""
         resp = client.post(
             "/convert",
             data=json.dumps({
@@ -195,11 +195,11 @@ class TestConvertInlineValidation:
             }),
             content_type="application/json",
         )
-        # Route-level validation passes; service will handle deeper validation
-        assert resp.status_code != 400 or "divisible" not in json.loads(resp.data).get("error", "")
+        assert resp.status_code == 400
+        assert "divisible" in json.loads(resp.data).get("error", "")
 
-    def test_convert_accepts_jpeg2000_compression_at_route_level(self, client, tmp_svs):
-        """Route no longer rejects 'jpeg2000' — ConvertConfig validation removed from route."""
+    def test_convert_rejects_jpeg2000_compression_at_route_level(self, client, tmp_svs):
+        """Route rejects unsupported compression before queueing background work."""
         resp = client.post(
             "/convert",
             data=json.dumps({
@@ -208,10 +208,8 @@ class TestConvertInlineValidation:
             }),
             content_type="application/json",
         )
-        # Should NOT be a 400 with a message about jpeg2000 being unsupported at route level
-        if resp.status_code == 400:
-            error_msg = json.loads(resp.data).get("error", "")
-            assert "jpeg2000" not in error_msg
+        assert resp.status_code == 400
+        assert "jpeg2000" in json.loads(resp.data).get("error", "")
 
     def test_convert_rejects_zero_tile_size(self, client, tmp_svs):
         resp = client.post(
@@ -320,20 +318,40 @@ class TestConvertInlineValidation:
 
     def test_convert_valid_omitted_optional_params_are_accepted(self, client, tmp_svs):
         """Omitting optional params should not trigger validation errors."""
-        resp = client.post(
-            "/convert",
-            data=json.dumps({"input_path": str(tmp_svs)}),
-            content_type="application/json",
-        )
-        # Should not be a 400 due to missing optional params
-        assert resp.status_code in (200, 409)  # 409 if service busy
+        class CapturingService:
+            is_active = False
+            progress_queues = {}
+            latest_events = {}
+
+            def start_conversion(self, job):
+                return "req-id"
+
+            def inspect_slide(self, path):
+                return {}
+
+            def cleanup_job(self, request_id):
+                pass
+
+        from svs_to_ometiff_gui.serve import app
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = CapturingService()
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({"input_path": str(tmp_svs)}),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+
+        assert resp.status_code == 200
 
 
 class TestConvertJobDefaults:
     """Verify the default values used in ConversionJob construction after PR changes."""
 
-    def test_convert_default_tile_size_is_512(self, client, tmp_svs):
-        """Default tile_size in inline job construction changed to 512 in this PR."""
+    def test_convert_defaults_match_public_profile(self, client, tmp_svs):
+        """Default single-conversion settings match the public profile."""
         captured_jobs = []
 
         class CapturingService:
@@ -365,7 +383,11 @@ class TestConvertJobDefaults:
 
         assert resp.status_code == 200
         assert len(captured_jobs) == 1
-        assert captured_jobs[0].tile_size == 512
+        assert captured_jobs[0].tile_size == 1024
+        assert captured_jobs[0].compression == "zlib"
+        assert captured_jobs[0].num_levels == 6
+        assert captured_jobs[0].downsample_factor == 2
+        assert captured_jobs[0].edge_mode == "crop"
 
     def test_convert_default_edge_mode_is_crop(self, client, tmp_svs):
         """Default edge_mode should be 'crop'."""
@@ -401,8 +423,46 @@ class TestConvertJobDefaults:
         assert resp.status_code == 200
         assert captured_jobs[0].edge_mode == "crop"
 
-    def test_batch_default_tile_size_is_512(self, client, tmp_svs):
-        """Batch route default tile_size is 512 per the inline code in this PR."""
+    def test_convert_includes_temp_dir_when_provided(self, client, tmp_svs, tmp_path):
+        """Single route carries the GUI temp directory into the job."""
+        captured_jobs = []
+
+        class CapturingService:
+            is_active = False
+            progress_queues = {}
+            latest_events = {}
+
+            def start_conversion(self, job):
+                captured_jobs.append(job)
+                return "req-id"
+
+            def inspect_slide(self, path):
+                return {}
+
+            def cleanup_job(self, request_id):
+                pass
+
+        from svs_to_ometiff_gui.serve import app
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = CapturingService()
+        temp_dir = tmp_path / "local_temp"
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({
+                    "input_path": str(tmp_svs),
+                    "temp_dir": str(temp_dir),
+                }),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+
+        assert resp.status_code == 200
+        assert captured_jobs[0].temp_dir == str(temp_dir)
+
+    def test_batch_defaults_match_public_profile(self, client, tmp_svs):
+        """Batch route defaults match the public profile."""
         captured_templates = []
 
         class CapturingService:
@@ -434,4 +494,46 @@ class TestConvertJobDefaults:
 
         assert resp.status_code == 200
         assert len(captured_templates) == 1
-        assert captured_templates[0].tile_size == 512
+        assert captured_templates[0].tile_size == 1024
+        assert captured_templates[0].compression == "zlib"
+        assert captured_templates[0].num_levels == 6
+        assert captured_templates[0].downsample_factor == 2
+        assert captured_templates[0].edge_mode == "crop"
+
+    def test_batch_includes_temp_dir_when_provided(self, client, tmp_svs, tmp_path):
+        """Batch route carries the GUI temp directory into the job template."""
+        captured_templates = []
+
+        class CapturingService:
+            is_active = False
+            progress_queues = {}
+            latest_events = {}
+
+            def start_batch_conversion(self, inputs, output_dir, job_template):
+                captured_templates.append(job_template)
+                return "batch-req-id"
+
+            def inspect_slide(self, path):
+                return {}
+
+            def cleanup_job(self, request_id):
+                pass
+
+        from svs_to_ometiff_gui.serve import app
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = CapturingService()
+        temp_dir = tmp_path / "local_temp"
+        try:
+            resp = client.post(
+                "/convert/batch",
+                data=json.dumps({
+                    "inputs": [str(tmp_svs)],
+                    "temp_dir": str(temp_dir),
+                }),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+
+        assert resp.status_code == 200
+        assert captured_templates[0].temp_dir == str(temp_dir)

@@ -6,12 +6,49 @@ structure using tifffile.
 """
 
 import sys
+import xml.etree.ElementTree as ET
+from typing import Optional
 
 import click
 import tifffile
 
 
-def verify_ometiff(path: str, *, min_levels: int = 1) -> dict:
+def _extract_physical_pixel_sizes(
+    ome_xml: Optional[str],
+) -> tuple[Optional[float], Optional[float]]:
+    if not ome_xml:
+        return None, None
+    try:
+        root = ET.fromstring(ome_xml)
+    except ET.ParseError:
+        return None, None
+
+    pixels = None
+    for elem in root.iter():
+        if elem.tag.endswith("Pixels"):
+            pixels = elem
+            break
+    if pixels is None:
+        return None, None
+
+    def _get_float(name: str) -> Optional[float]:
+        value = pixels.attrib.get(name)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            return None
+
+    return _get_float("PhysicalSizeX"), _get_float("PhysicalSizeY")
+
+
+def verify_ometiff(
+    path: str,
+    *,
+    min_levels: int = 1,
+    expected_tile_size: Optional[int] = 1024,
+) -> dict:
     """Validate OME BigTIFF structure of *path*.
 
     Checks:
@@ -30,6 +67,7 @@ def verify_ometiff(path: str, *, min_levels: int = 1) -> dict:
         ``dtype``, and ``pass``.
     """
     errors: list[str] = []
+    warnings: list[str] = []
 
     with tifffile.TiffFile(path) as tif:
         is_ome = tif.is_ome
@@ -48,9 +86,14 @@ def verify_ometiff(path: str, *, min_levels: int = 1) -> dict:
                 "is_bigtiff": is_bigtiff,
                 "levels": [],
                 "subifds": 0,
+                "tile_width": None,
+                "tile_height": None,
                 "dtype": None,
+                "physical_size_x": None,
+                "physical_size_y": None,
                 "pass": False,
                 "errors": errors,
+                "warnings": warnings,
             }
 
         series = tif.series[0]
@@ -78,6 +121,31 @@ def verify_ometiff(path: str, *, min_levels: int = 1) -> dict:
 
         # SubIFD info
         subifds = len(levels) - 1 if len(levels) > 1 else 0
+        if len(levels) > 1 and subifds == 0:
+            errors.append("No SubIFD pyramid levels found")
+
+        page0 = tif.pages[0]
+        tile_width = getattr(page0, "tilewidth", None)
+        tile_height = getattr(page0, "tilelength", None)
+        if tile_width is None and "TileWidth" in page0.tags:
+            tile_width = int(page0.tags["TileWidth"].value)
+        if tile_height is None and "TileLength" in page0.tags:
+            tile_height = int(page0.tags["TileLength"].value)
+        if tile_width is None or tile_height is None:
+            errors.append("Level 0 is not tiled")
+        elif expected_tile_size is not None and (
+            tile_width != expected_tile_size or tile_height != expected_tile_size
+        ):
+            warnings.append(
+                f"Level 0 tile size is {tile_width} x {tile_height}; expected "
+                f"{expected_tile_size} x {expected_tile_size} for the default profile"
+            )
+
+        physical_size_x, physical_size_y = _extract_physical_pixel_sizes(
+            tif.ome_metadata
+        )
+        if physical_size_x is None or physical_size_y is None:
+            warnings.append("OME physical pixel size / MPP metadata was not found")
 
         passed = len(errors) == 0
 
@@ -86,9 +154,14 @@ def verify_ometiff(path: str, *, min_levels: int = 1) -> dict:
             "is_bigtiff": is_bigtiff,
             "levels": level_shapes,
             "subifds": subifds,
+            "tile_width": tile_width,
+            "tile_height": tile_height,
             "dtype": dtype,
+            "physical_size_x": physical_size_x,
+            "physical_size_y": physical_size_y,
             "pass": passed,
             "errors": errors,
+            "warnings": warnings,
         }
 
 
@@ -123,8 +196,23 @@ def main(path: str, min_levels: int) -> None:
     click.echo(f"Levels: {len(result['levels'])}")
     click.echo(f"Level shapes: {result['levels']}")
     click.echo(f"Dtype: {result['dtype']}")
+    click.echo(f"SubIFDs: {result['subifds']}")
+    click.echo(f"Tile size: {result['tile_width']} x {result['tile_height']}")
+    if result["physical_size_x"] is not None and result["physical_size_y"] is not None:
+        click.echo(
+            "Physical pixel size: "
+            f"{result['physical_size_x']} x {result['physical_size_y']} µm/px"
+        )
+    else:
+        click.echo("Physical pixel size: not found")
+
+    if result["warnings"]:
+        click.echo("Warnings:")
+        for warning in result["warnings"]:
+            click.echo(f"  - {warning}", err=True)
 
     if result["errors"]:
+        click.echo("Errors:")
         for err in result["errors"]:
             click.echo(f"  - {err}", err=True)
 

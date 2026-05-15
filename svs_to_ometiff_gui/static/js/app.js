@@ -264,6 +264,8 @@
 
     convertBtn.disabled = true; convertBtn.textContent = 'Converting…';
     completionBox.classList.remove('visible'); errorBox.classList.remove('visible');
+    const completionText = completionBox.querySelector('span');
+    if (completionText) completionText.textContent = '✓ Conversion complete';
     idlePlaceholder.classList.add('hidden'); progressContent.classList.remove('hidden');
     if (mode === 'single') batchQueue.classList.add('hidden');
     setProgress(0); progressMsg.textContent = 'Starting conversion…';
@@ -309,9 +311,19 @@
         }
       } catch(_) {}
     });
-    es.addEventListener('complete', () => {
+    es.addEventListener('complete', e => {
+      let cleanupWarning = null;
+      try {
+        const d = JSON.parse(e.data || '{}');
+        cleanupWarning = d.cleanup_warning || null;
+      } catch(_) {}
       es.close(); setProgress(100);
       progressContent.classList.add('hidden'); idlePlaceholder.classList.add('hidden');
+      if (cleanupWarning) {
+        const completionText = completionBox.querySelector('span');
+        if (completionText) completionText.textContent = '✓ Conversion complete with cleanup warning';
+        addLog('⚠ ' + cleanupWarning);
+      }
       completionBox.classList.add('visible');
       addLog('✓ Conversion complete');
       convertBtn.textContent = 'Convert'; convertBtn.disabled = false;

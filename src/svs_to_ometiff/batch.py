@@ -62,12 +62,6 @@ from svs_to_ometiff.converter import convert
     help="Border behavior when dimensions are not divisible by downsample factor.",
 )
 @click.option(
-    "--temp-dir",
-    type=click.Path(),
-    default=None,
-    help="Directory for temporary staging files (use a local SSD when reading/writing over network shares).",
-)
-@click.option(
     "--quiet",
     is_flag=True,
     help="Suppress progress output.",
@@ -93,7 +87,6 @@ def main(
     num_levels: int,
     downsample_factor: int,
     edge_mode: str,
-    temp_dir: Optional[str],
     quiet: bool,
     verbose: bool,
     temp_dir: Optional[str],
@@ -160,7 +153,6 @@ def main(
                 num_levels=num_levels,
                 downsample_factor=downsample_factor,
                 edge_mode=edge_mode,
-                temp_dir=temp_dir,
                 verbose=show_progress,
                 tile_progress_interval=tile_progress_interval,
                 temp_dir=temp_dir,
