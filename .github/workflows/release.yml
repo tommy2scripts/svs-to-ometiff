@@ -79,6 +79,7 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write   # Required for OIDC-based PyPI trusted publishing
       contents: write   # Required for GitHub Release creation
