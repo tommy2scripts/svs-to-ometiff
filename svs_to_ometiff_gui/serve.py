@@ -25,7 +25,12 @@ from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff_gui.config import Config
 from svs_to_ometiff_gui.file_dialogs import get_dialog_strategy
 from svs_to_ometiff_gui.models import ConversionJob
-from svs_to_ometiff_gui.services import ConversionService, resolve_path
+from svs_to_ometiff_gui.services import (
+    ConversionService,
+    find_duplicate_batch_outputs,
+    format_duplicate_batch_outputs,
+    resolve_path,
+)
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -297,6 +302,10 @@ def handle_convert_batch():
     out_dir_obj.mkdir(parents=True, exist_ok=True)
     if not os.access(output_dir, os.W_OK):
         return jsonify({"error": f"Output directory is not writable: {output_dir}"}), 400
+
+    duplicate_outputs = find_duplicate_batch_outputs(resolved_inputs, output_dir)
+    if duplicate_outputs:
+        return jsonify({"error": format_duplicate_batch_outputs(duplicate_outputs)}), 400
 
     try:
         job_template = _build_conversion_job(

@@ -276,6 +276,7 @@
       .then(data => { currentRequestId = data.request_id; listenProgress(data.request_id); })
       .catch(err => {
         progressContent.classList.add('hidden'); idlePlaceholder.classList.remove('hidden');
+        batchQueue.classList.add('hidden');
         errorBox.textContent = err.message; errorBox.classList.add('visible');
         convertBtn.textContent = 'Convert'; convertBtn.disabled = false;
       });

@@ -188,6 +188,8 @@ def _stage_level0_memmap(
         progress_interval=config.tile_progress_interval if config.verbose else 0,
         progress_logger=config.progress_logger,
     ):
+        if _shutdown_event.is_set():
+            raise _ConversionCancelled("Conversion cancelled during tile decoding")
         y0 = item["y0"]
         y1 = item["y1"]
         x0 = item["x0"]

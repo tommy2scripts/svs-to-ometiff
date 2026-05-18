@@ -76,6 +76,8 @@ class ConvertConfig:
             raise ValueError("num_levels must be at least 1")
         if self.downsample_factor < 2:
             raise ValueError("downsample_factor must be at least 2")
+        if self.edge_mode not in {"crop", "pad"}:
+            raise ValueError(f"edge_mode must be 'crop' or 'pad', got {self.edge_mode!r}")
         if self.compression not in _SUPPORTED_COMPRESSION:
             raise ValueError(
                 f"compression must be one of {', '.join(repr(c) for c in _SUPPORTED_COMPRESSION)}, got {self.compression!r}"

@@ -189,6 +189,14 @@ class TestFromDict:
                 "compression": "bzip2",
             })
 
+    def test_validation_runs_on_bad_edge_mode(self):
+        with pytest.raises(ValueError, match="edge_mode"):
+            ConvertConfig.from_dict({
+                "input_svs": "/in.svs",
+                "output_ometiff": "/out.ome.tiff",
+                "edge_mode": "mirror",
+            })
+
     def test_rejects_same_input_and_output_path(self, tmp_path):
         slide = tmp_path / "slide.svs"
         slide.write_bytes(b"not used")

@@ -90,3 +90,36 @@ def test_batch_cli_passes_temp_dir(monkeypatch, tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert len(captured) == 1
     assert captured[0][1]["temp_dir"] == str(temp_dir)
+
+
+def test_batch_cli_rejects_duplicate_output_paths(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    def fake_convert(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"pyramid_shapes": []}
+
+    monkeypatch.setattr(batch_cli, "convert", fake_convert)
+    first_dir = tmp_path / "a"
+    second_dir = tmp_path / "b"
+    output_dir = tmp_path / "out"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    output_dir.mkdir()
+    (first_dir / "slide.svs").write_bytes(b"not used")
+    (second_dir / "slide.svs").write_bytes(b"not used")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        batch_cli.main,
+        [
+            str(tmp_path / "**" / "*.svs"),
+            "--output-dir",
+            str(output_dir),
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "collision" in result.output.lower()
+    assert calls == []

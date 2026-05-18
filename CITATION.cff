@@ -6,8 +6,8 @@ authors:
   - family-names: Tran
     given-names: Tommy
 title: "svs-to-ometiff: Convert Aperio compression-33007 SVS to pyramidal OME-TIFF"
-version: 0.6.1
-date-released: 2026-05-14
+version: 0.7.0
+date-released: 2026-05-15
 url: "https://github.com/tommy2scripts/svs-to-ometiff"
 license: MIT
 type: software

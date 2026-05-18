@@ -181,6 +181,46 @@ class TestBatchConvertRoute:
         data = json.loads(resp.data)
         assert "positive int" in data["error"]
 
+    def test_batch_rejects_duplicate_output_paths(self, client, tmp_path):
+        first_dir = tmp_path / "a"
+        second_dir = tmp_path / "b"
+        output_dir = tmp_path / "out"
+        first_dir.mkdir()
+        second_dir.mkdir()
+        output_dir.mkdir()
+        first = first_dir / "slide.svs"
+        second = second_dir / "slide.svs"
+        first.write_bytes(b"not used")
+        second.write_bytes(b"not used")
+
+        resp = client.post(
+            "/convert/batch",
+            data=json.dumps({
+                "inputs": [str(first), str(second)],
+                "output_dir": str(output_dir),
+            }),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "collision" in data["error"].lower()
+        assert "slide.ome.tiff" in data["error"]
+
+    def test_batch_rejects_invalid_edge_mode(self, client, tmp_svs):
+        resp = client.post(
+            "/convert/batch",
+            data=json.dumps({
+                "inputs": [str(tmp_svs)],
+                "edge_mode": "mirror",
+            }),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "edge_mode" in data["error"]
+
 
 class TestConvertInlineValidation:
     """Tests for the new inline validation added in the PR (no ConvertConfig delegation)."""
@@ -210,6 +250,18 @@ class TestConvertInlineValidation:
         )
         assert resp.status_code == 400
         assert "bzip2" in json.loads(resp.data).get("error", "")
+
+    def test_convert_rejects_invalid_edge_mode_at_route_level(self, client, tmp_svs):
+        resp = client.post(
+            "/convert",
+            data=json.dumps({
+                "input_path": str(tmp_svs),
+                "edge_mode": "mirror",
+            }),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        assert "edge_mode" in json.loads(resp.data).get("error", "")
 
     def test_convert_rejects_zero_tile_size(self, client, tmp_svs):
         resp = client.post(

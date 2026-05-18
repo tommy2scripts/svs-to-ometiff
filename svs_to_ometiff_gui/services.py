@@ -8,6 +8,7 @@ import logging
 import re
 import signal
 import threading
+import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Manager
@@ -80,6 +81,43 @@ def resolve_path(path: str) -> Optional[str]:
     return None
 
 
+def batch_output_path(input_path: str, output_dir: str) -> str:
+    """Return the GUI batch destination path for one input slide."""
+    base = Path(input_path).with_suffix("")
+    return str(Path(output_dir) / f"{base.name}.ome.tiff")
+
+
+def find_duplicate_batch_outputs(
+    inputs: list[str],
+    output_dir: str,
+) -> dict[str, list[str]]:
+    """Return destination paths that would be written by multiple inputs."""
+    outputs: dict[str, tuple[str, list[str]]] = {}
+    for input_path in inputs:
+        out_path = batch_output_path(input_path, output_dir)
+        key = str(Path(out_path).resolve()).casefold()
+        if key not in outputs:
+            outputs[key] = (out_path, [])
+        outputs[key][1].append(input_path)
+
+    return {
+        out_path: input_paths
+        for out_path, input_paths in outputs.values()
+        if len(input_paths) > 1
+    }
+
+
+def format_duplicate_batch_outputs(duplicates: dict[str, list[str]]) -> str:
+    """Build a compact user-facing error for colliding batch outputs."""
+    lines = ["Batch output path collision detected."]
+    for out_path, input_paths in duplicates.items():
+        lines.append(f"{out_path}:")
+        for input_path in input_paths:
+            lines.append(f"  - {input_path}")
+    lines.append("Use distinct filenames or split the batch to avoid overwriting outputs.")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Worker Functions (Must be top-level for multiprocessing)
 # ---------------------------------------------------------------------------
@@ -138,11 +176,13 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
         compression = None
 
     try:
+        duplicates = find_duplicate_batch_outputs(inputs, output_dir)
+        if duplicates:
+            raise ValueError(format_duplicate_batch_outputs(duplicates))
+
         for idx, input_path in enumerate(inputs):
             filename = Path(input_path).name
-            base = Path(input_path).with_suffix("")
-            out_filename = str(base.name) + ".ome.tiff"
-            output_path = str(Path(output_dir) / out_filename)
+            output_path = batch_output_path(input_path, output_dir)
 
             m_queue.put((request_id, "progress", {
                 "message": f"Starting {filename}...",
@@ -300,6 +340,46 @@ class ConversionService:
         self.progress_queues.pop(request_id, None)
         self.latest_events.pop(request_id, None)
 
+    def _terminate_worker_processes(
+        self,
+        timeout_seconds: int,
+        log: logging.Logger,
+    ) -> None:
+        """Terminate running ProcessPoolExecutor workers before teardown."""
+        if self._executor is None:
+            return
+
+        processes = getattr(self._executor, "_processes", None)
+        if not isinstance(processes, dict):
+            return
+
+        workers = [
+            process
+            for process in processes.values()
+            if process is not None and process.is_alive()
+        ]
+        if not workers:
+            return
+
+        for process in workers:
+            process.terminate()
+
+        deadline = time.monotonic() + max(timeout_seconds, 0)
+        for process in workers:
+            remaining = max(0.0, deadline - time.monotonic())
+            process.join(timeout=remaining)
+
+        for process in workers:
+            if not process.is_alive():
+                continue
+            log.warning("Worker process %s did not stop after SIGTERM; killing", process.pid)
+            kill = getattr(process, "kill", None)
+            if callable(kill):
+                kill()
+            else:
+                process.terminate()
+            process.join(timeout=1)
+
     # ------------------------------------------------------------------
     # Single conversion
     # ------------------------------------------------------------------
@@ -370,6 +450,7 @@ class ConversionService:
 
         # Cancel running futures and terminate worker processes
         if self._executor is not None:
+            self._terminate_worker_processes(timeout_seconds, log)
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None
 

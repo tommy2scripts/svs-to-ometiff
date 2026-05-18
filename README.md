@@ -145,7 +145,9 @@ svs-to-ometiff-batch "/data/**/*.svs" --compression zlib
 Batch conversion reads each source `.svs` file and writes a new
 `<stem>.ome.tiff` file. It does not modify, overwrite, or delete the original
 SVS files. Choose an `--output-dir` outside the source directory if you want a
-clear separation between source slides and converted outputs.
+clear separation between source slides and converted outputs. If multiple
+inputs would write the same destination filename, batch mode fails before
+starting any conversion.
 
 Verify an output OME-TIFF:
 
@@ -385,8 +387,6 @@ Recommended hardening before broad unattended production batches:
 
 - Add `--skip-existing` and `--force` to batch mode so reruns cannot silently
   replace already validated OME-TIFF outputs.
-- Preflight duplicate destination filenames when using recursive globs with a
-  shared `--output-dir`.
 - Add clearer Windows diagnostics when a drive-letter path such as `L:\...` is
   unavailable in the current shell or service session.
 - Estimate required temp and output disk space before starting each conversion,
@@ -397,8 +397,8 @@ Recommended hardening before broad unattended production batches:
 - Add an optional batch `--verify` mode that runs `svs-to-ometiff-verify` after
   each successful conversion and records the result.
 - Add a conservative `--jobs` option only after disk-space checks and output
-  collision checks are in place; on typical Windows workstations, one or two
-  jobs should be the practical upper bound for large whole-slide images.
+  overwrite policy controls are in place; on typical Windows workstations, one
+  or two jobs should be the practical upper bound for large whole-slide images.
 
 Project layout:
 

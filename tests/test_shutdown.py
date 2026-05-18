@@ -2,7 +2,6 @@
 and cancellation checkpoints in the conversion pipeline.
 """
 
-import os
 import signal
 import tempfile
 import threading
@@ -43,6 +42,26 @@ class TestConversionServiceShutdown:
 
         mock_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
         assert svc._executor is None
+
+    def test_shutdown_terminates_running_worker_processes(self):
+        """shutdown() signals active ProcessPoolExecutor workers before teardown."""
+        from svs_to_ometiff_gui.services import ConversionService
+
+        svc = ConversionService()
+        process = MagicMock()
+        process.is_alive.side_effect = [True, False]
+        process.pid = 1234
+        mock_executor = MagicMock()
+        mock_executor._processes = {1234: process}
+        svc._executor = mock_executor
+        svc._dispatcher_thread = MagicMock()
+        svc._dispatcher_thread.is_alive.return_value = False
+
+        svc.shutdown(timeout_seconds=1)
+
+        process.terminate.assert_called_once()
+        process.join.assert_called()
+        mock_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
 
     def test_shutdown_unblocks_sse_queues(self):
         """shutdown() puts an error event into every active progress queue."""
