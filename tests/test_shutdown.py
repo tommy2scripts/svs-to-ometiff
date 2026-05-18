@@ -145,12 +145,20 @@ class TestWorkerSignalHandlers:
         from svs_to_ometiff.converter import _shutdown_event
         from svs_to_ometiff_gui.services import _install_worker_signal_handlers
 
+        original_sigterm = signal.getsignal(signal.SIGTERM)
+        original_sigint = signal.getsignal(signal.SIGINT)
         _shutdown_event.clear()
-        _install_worker_signal_handlers()
+        try:
+            _install_worker_signal_handlers()
+            handler = signal.getsignal(signal.SIGTERM)
 
-        # SIGTERM should set the shutdown event
-        os.kill(os.getpid(), signal.SIGTERM)
-        assert _shutdown_event.is_set()
+            assert callable(handler)
+            handler(signal.SIGTERM, None)
+            assert _shutdown_event.is_set()
+        finally:
+            signal.signal(signal.SIGTERM, original_sigterm)
+            signal.signal(signal.SIGINT, original_sigint)
+            _shutdown_event.clear()
 
 
 class TestPytestDetection:
@@ -323,7 +331,9 @@ class TestGunicornShutdown:
             with upatch("svs_to_ometiff_gui.serve._is_running_under_pytest", return_value=False):
                 with upatch.object(app.config["CONVERSION_SERVICE"], "shutdown") as mock_shutdown:
                     _install_gunicorn_sigterm_handler()
-                    os.kill(os.getpid(), signal.SIGTERM)
+                    handler = signal.getsignal(signal.SIGTERM)
+                    assert callable(handler)
+                    handler(signal.SIGTERM, None)
                     mock_shutdown.assert_called_once()
         finally:
             signal.signal(signal.SIGTERM, signal.SIG_DFL)

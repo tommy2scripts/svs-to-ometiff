@@ -1,8 +1,10 @@
 """Configuration objects for svs-to-ometiff conversion."""
 
 import json
+import os
 
 from dataclasses import dataclass, fields
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 from svs_to_ometiff.utils import ProgressLogger
@@ -62,6 +64,10 @@ class ConvertConfig:
         return cls(**filtered)
 
     def _validate(self) -> None:
+        input_path = Path(self.input_svs)
+        output_path = Path(self.output_ometiff)
+        if _paths_refer_to_same_file(input_path, output_path):
+            raise ValueError("output_ometiff must be different from input_svs")
         if self.tile_size <= 0:
             raise ValueError("tile_size must be positive")
         if self.tile_size % 16 != 0:
@@ -74,3 +80,15 @@ class ConvertConfig:
             raise ValueError(
                 f"compression must be one of {', '.join(repr(c) for c in _SUPPORTED_COMPRESSION)}, got {self.compression!r}"
             )
+
+
+def _paths_refer_to_same_file(input_path: Path, output_path: Path) -> bool:
+    """Return True when two paths would target the same filesystem object."""
+    try:
+        return input_path.samefile(output_path)
+    except (FileNotFoundError, OSError):
+        pass
+
+    return os.path.normcase(os.path.abspath(input_path)) == os.path.normcase(
+        os.path.abspath(output_path)
+    )

@@ -189,6 +189,27 @@ class TestFromDict:
                 "compression": "bzip2",
             })
 
+    def test_rejects_same_input_and_output_path(self, tmp_path):
+        slide = tmp_path / "slide.svs"
+        slide.write_bytes(b"not used")
+
+        with pytest.raises(ValueError, match="output_ometiff"):
+            ConvertConfig(
+                input_svs=str(slide),
+                output_ometiff=str(slide),
+            )
+
+    def test_rejects_same_input_and_output_path_with_relative_segments(self, tmp_path, monkeypatch):
+        slide = tmp_path / "slide.svs"
+        slide.write_bytes(b"not used")
+        monkeypatch.chdir(tmp_path)
+
+        with pytest.raises(ValueError, match="output_ometiff"):
+            ConvertConfig(
+                input_svs="slide.svs",
+                output_ometiff=str(tmp_path / "." / "slide.svs"),
+            )
+
 
 # ---------------------------------------------------------------------------
 # Round-trip
