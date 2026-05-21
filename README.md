@@ -404,9 +404,11 @@ Project layout:
 
 ```text
 svs-to-ometiff/
-├── src/svs_to_ometiff/       # Core library and CLI commands
-├── svs_to_ometiff_gui/       # Flask GUI, services, static assets
+├── src/
+│   ├── svs_to_ometiff/       # Core library and CLI commands
+│   └── svs_to_ometiff_gui/   # Flask GUI, services, static assets
 ├── tests/                    # Synthetic fixture tests
+├── .github/                  # CI, release, and community docs
 ├── pyproject.toml
 └── README.md
 ```

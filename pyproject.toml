@@ -61,7 +61,7 @@ Repository = "https://github.com/tommy2scripts/svs-to-ometiff"
 "Bug Tracker" = "https://github.com/tommy2scripts/svs-to-ometiff/issues"
 
 [tool.setuptools.packages.find]
-where = ["src", "."]
+where = ["src"]
 include = ["svs_to_ometiff*", "svs_to_ometiff_gui*"]
 namespaces = true
 
@@ -71,7 +71,7 @@ svs_to_ometiff_gui = ["templates/*.html", "static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "."]
+pythonpath = ["src"]
 addopts = "-v --tb=short -p no:napari -p no:zarr"
 markers = [
     "slow: integration tests using large synthetic fixtures (deselect with '-m \"not slow\"')",
