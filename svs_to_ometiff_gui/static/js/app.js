@@ -256,6 +256,7 @@
     Object.assign(payload, {
       tile_size: parseInt($('tileSize').value, 10),
       compression: $('compression').value,
+      compressionargs: $('compressionArgs').value.trim() || undefined,
       num_levels: parseInt($('numLevels').value, 10),
       downsample_factor: parseInt($('downsampleFactor').value, 10),
       edge_mode: $('edgeMode').value,

@@ -123,3 +123,43 @@ def test_batch_cli_rejects_duplicate_output_paths(monkeypatch, tmp_path: Path) -
     assert result.exit_code == 1
     assert "collision" in result.output.lower()
     assert calls == []
+
+
+def test_batch_cli_passes_compression_args(monkeypatch, tmp_path: Path) -> None:
+    captured = []
+
+    def fake_convert(*args, **kwargs):
+        captured.append((args, kwargs))
+        return {"pyramid_shapes": []}
+
+    monkeypatch.setattr(batch_cli, "convert", fake_convert)
+    input_svs = tmp_path / "slide.svs"
+    input_svs.write_bytes(b"not used")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        batch_cli.main,
+        [
+            str(tmp_path),
+            "--compression",
+            "jpeg",
+            "--compression-args",
+            '{"level": 85}',
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured[0][1]["compression"] == "jpeg"
+    assert captured[0][1]["compressionargs"] == {"level": 85}
+
+
+def test_batch_cli_rejects_invalid_compression_args() -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        batch_cli.main,
+        ["slides", "--compression-args", "42"],
+    )
+
+    assert result.exit_code != 0
+    assert "must be a JSON object" in result.output

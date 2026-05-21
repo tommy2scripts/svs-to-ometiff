@@ -17,6 +17,7 @@ import sys
 import time
 import webbrowser
 from pathlib import Path
+from typing import Any, Optional
 
 from flask import Flask, Response, jsonify, render_template, request
 
@@ -136,6 +137,23 @@ def _coerce_positive_int(body: dict, key: str, default: int) -> int:
     return coerced
 
 
+def _coerce_optional_dict(body: dict, key: str) -> Optional[dict[str, Any]]:
+    """Read an optional JSON-object option from a request body."""
+    value = body.get(key)
+    if value in (None, ""):
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{key} must be valid JSON") from exc
+        if isinstance(parsed, dict):
+            return parsed
+    raise ValueError(f"{key} must be a JSON object")
+
+
 def _build_conversion_job(
     body: dict,
     *,
@@ -151,6 +169,7 @@ def _build_conversion_job(
         _config.DEFAULT_DOWNSAMPLE,
     )
     compression = body.get("compression", _config.DEFAULT_COMPRESSION)
+    compressionargs = _coerce_optional_dict(body, "compressionargs")
     edge_mode = body.get("edge_mode", _config.DEFAULT_EDGE_MODE)
     temp_dir = body.get("temp_dir", "") or None
     converter_compression = None if compression == "none" else compression
@@ -163,6 +182,7 @@ def _build_conversion_job(
         num_levels=num_levels,
         downsample_factor=downsample_factor,
         edge_mode=edge_mode,
+        compressionargs=compressionargs,
     )
 
     return ConversionJob(
@@ -174,6 +194,7 @@ def _build_conversion_job(
         downsample_factor=downsample_factor,
         edge_mode=edge_mode,
         temp_dir=temp_dir,
+        compressionargs=compressionargs,
     )
 
 

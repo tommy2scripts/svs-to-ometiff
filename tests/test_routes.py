@@ -513,6 +513,45 @@ class TestConvertJobDefaults:
         assert resp.status_code == 200
         assert captured_jobs[0].temp_dir == str(temp_dir)
 
+    def test_convert_includes_compressionargs_when_provided(self, client, tmp_svs):
+        """Single route carries codec-specific compression args into the job."""
+        captured_jobs = []
+
+        class CapturingService:
+            is_active = False
+            progress_queues = {}
+            latest_events = {}
+
+            def start_conversion(self, job):
+                captured_jobs.append(job)
+                return "req-id"
+
+            def inspect_slide(self, path):
+                return {}
+
+            def cleanup_job(self, request_id):
+                pass
+
+        from svs_to_ometiff_gui.serve import app
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = CapturingService()
+        try:
+            resp = client.post(
+                "/convert",
+                data=json.dumps({
+                    "input_path": str(tmp_svs),
+                    "compression": "jpeg",
+                    "compressionargs": '{"level": 85}',
+                }),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+
+        assert resp.status_code == 200
+        assert captured_jobs[0].compression == "jpeg"
+        assert captured_jobs[0].compressionargs == {"level": 85}
+
     def test_batch_defaults_match_public_profile(self, client, tmp_svs):
         """Batch route defaults match the public profile."""
         captured_templates = []
@@ -589,3 +628,42 @@ class TestConvertJobDefaults:
 
         assert resp.status_code == 200
         assert captured_templates[0].temp_dir == str(temp_dir)
+
+    def test_batch_includes_compressionargs_when_provided(self, client, tmp_svs):
+        """Batch route carries codec-specific compression args into the job template."""
+        captured_templates = []
+
+        class CapturingService:
+            is_active = False
+            progress_queues = {}
+            latest_events = {}
+
+            def start_batch_conversion(self, inputs, output_dir, job_template):
+                captured_templates.append(job_template)
+                return "batch-req-id"
+
+            def inspect_slide(self, path):
+                return {}
+
+            def cleanup_job(self, request_id):
+                pass
+
+        from svs_to_ometiff_gui.serve import app
+        original = app.config["CONVERSION_SERVICE"]
+        app.config["CONVERSION_SERVICE"] = CapturingService()
+        try:
+            resp = client.post(
+                "/convert/batch",
+                data=json.dumps({
+                    "inputs": [str(tmp_svs)],
+                    "compression": "jpeg",
+                    "compressionargs": {"level": 85},
+                }),
+                content_type="application/json",
+            )
+        finally:
+            app.config["CONVERSION_SERVICE"] = original
+
+        assert resp.status_code == 200
+        assert captured_templates[0].compression == "jpeg"
+        assert captured_templates[0].compressionargs == {"level": 85}

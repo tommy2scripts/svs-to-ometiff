@@ -222,6 +222,7 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
                 downsample_factor=job_template_dict.get("downsample_factor", 2),
                 edge_mode=job_template_dict.get("edge_mode", "crop"),
                 temp_dir=job_template_dict.get("temp_dir"),
+                compressionargs=job_template_dict.get("compressionargs"),
                 progress_logger=progress_callback,
             )
             cleanup_warning = result.get("cleanup_warning")
@@ -420,6 +421,7 @@ class ConversionService:
             "downsample_factor": job_template.downsample_factor,
             "edge_mode": job_template.edge_mode,
             "temp_dir": job_template.temp_dir,
+            "compressionargs": job_template.compressionargs,
         }
         self._executor.submit(
             _run_batch_conversion_worker,
