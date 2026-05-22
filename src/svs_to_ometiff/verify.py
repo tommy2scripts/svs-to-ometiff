@@ -5,12 +5,16 @@ Validates that a TIFF file conforms to expected OME BigTIFF pyramidal
 structure using tifffile.
 """
 
+import json
 import sys
 import xml.etree.ElementTree as ET
 from typing import Optional
 
 import click
+import numpy as np
 import tifffile
+
+from svs_to_ometiff.tile_reader import read_svs_metadata
 
 
 def _extract_physical_pixel_sizes(
@@ -43,11 +47,39 @@ def _extract_physical_pixel_sizes(
     return _get_float("PhysicalSizeX"), _get_float("PhysicalSizeY")
 
 
+def _extract_objective_magnification(ome_xml: Optional[str]) -> Optional[float]:
+    if not ome_xml:
+        return None
+    try:
+        root = ET.fromstring(ome_xml)
+    except ET.ParseError:
+        return None
+
+    objective = None
+    for elem in root.iter():
+        if elem.tag.endswith("Objective"):
+            objective = elem
+            break
+    if objective is None:
+        return None
+
+    value = objective.attrib.get("NominalMagnification")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 def verify_ometiff(
     path: str,
     *,
     min_levels: int = 1,
     expected_tile_size: Optional[int] = 1024,
+    source_path: Optional[str] = None,
+    deep: bool = False,
+    tolerance: float = 1e-4,
 ) -> dict:
     """Validate OME BigTIFF structure of *path*.
 
@@ -147,6 +179,67 @@ def verify_ometiff(
         if physical_size_x is None or physical_size_y is None:
             warnings.append("OME physical pixel size / MPP metadata was not found")
 
+        # Source-aware verification checks
+        if source_path is not None:
+            try:
+                source_meta = read_svs_metadata(source_path)
+                src_w = int(source_meta["width"])
+                src_h = int(source_meta["height"])
+                src_mpp = source_meta.get("mpp")
+                src_mag = source_meta.get("magnification")
+
+                if levels:
+                    out_h, out_w = level_shapes[0][:2]
+                    if out_w != src_w or out_h != src_h:
+                        errors.append(
+                            f"Output Level 0 dimensions {out_w}x{out_h} do not match "
+                            f"source dimensions {src_w}x{src_h}"
+                        )
+
+                if src_mpp is not None:
+                    if physical_size_x is None or physical_size_y is None:
+                        errors.append(
+                            f"Source has MPP {src_mpp}, but output is missing physical pixel size metadata"
+                        )
+                    else:
+                        diff_x = abs(physical_size_x - src_mpp)
+                        diff_y = abs(physical_size_y - src_mpp)
+                        if diff_x > tolerance or diff_y > tolerance:
+                            errors.append(
+                                f"Output MPP ({physical_size_x:.6f}, {physical_size_y:.6f}) "
+                                f"differs from source MPP {src_mpp:.6f} by more than tolerance {tolerance}"
+                            )
+
+                if src_mag is not None:
+                    out_mag = _extract_objective_magnification(tif.ome_metadata)
+                    if out_mag is None:
+                        warnings.append(
+                            f"Source has magnification {src_mag}x, but output is missing nominal magnification metadata"
+                        )
+                    elif abs(out_mag - src_mag) > 1e-2:
+                        errors.append(
+                            f"Output magnification {out_mag}x does not match source magnification {src_mag}x"
+                        )
+            except Exception as exc:
+                errors.append(f"Failed to read or compare source metadata: {exc}")
+
+        # Deep pixel data checks
+        if deep and levels:
+            try:
+                smallest_level_data = levels[-1].asarray()
+                if np.all(smallest_level_data == 0):
+                    errors.append(
+                        "Deep check failed: The smallest pyramid level is entirely empty/black (all zeroes). "
+                        "The output image appears completely empty."
+                    )
+                elif np.std(smallest_level_data) < 1e-5:
+                    warnings.append(
+                        "Deep check warning: The smallest pyramid level has extremely low variance/is uniform. "
+                        "The image may be entirely solid or blank."
+                    )
+            except Exception as exc:
+                errors.append(f"Deep verification failed to read pixel data: {exc}")
+
         passed = len(errors) == 0
 
         return {
@@ -174,7 +267,43 @@ def verify_ometiff(
     show_default=True,
     help="Minimum number of pyramid levels required.",
 )
-def main(path: str, min_levels: int) -> None:
+@click.option(
+    "--source",
+    type=click.Path(exists=True),
+    help="Path to the original SVS source for metadata comparison.",
+)
+@click.option(
+    "--deep",
+    is_flag=True,
+    help="Enable deep pixel checks on the output image.",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Format verification output as machine-readable JSON.",
+)
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Strict mode (escalates warnings to errors and fails verification).",
+)
+@click.option(
+    "--tolerance",
+    default=1e-4,
+    type=float,
+    show_default=True,
+    help="Float tolerance for MPP comparison.",
+)
+def main(
+    path: str,
+    min_levels: int,
+    source: Optional[str],
+    deep: bool,
+    json_output: bool,
+    strict: bool,
+    tolerance: float,
+) -> None:
     """Verify an OME-TIFF file's structure.
 
     PATH is the path to the OME-TIFF file to verify.
@@ -183,11 +312,42 @@ def main(path: str, min_levels: int) -> None:
     checks failed.
     """
     try:
-        result = verify_ometiff(path, min_levels=min_levels)
+        result = verify_ometiff(
+            path,
+            min_levels=min_levels,
+            source_path=source,
+            deep=deep,
+            tolerance=tolerance,
+        )
     except Exception as exc:
-        click.echo(f"[FAIL] {path}")
-        click.echo(f"Error: {exc}", err=True)
+        if json_output:
+            click.echo(
+                json.dumps(
+                    {
+                        "pass": False,
+                        "errors": [f"Error: {exc}"],
+                        "warnings": [],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+        else:
+            click.echo(f"[FAIL] {path}")
+            click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
+
+    # Escalating warnings to errors in strict mode
+    if strict and result["warnings"]:
+        for warning in result["warnings"]:
+            result["errors"].append(f"Strict mode: {warning}")
+        result["pass"] = False
+
+    if json_output:
+        click.echo(json.dumps(result, indent=2, sort_keys=True))
+        if not result["pass"]:
+            sys.exit(1)
+        return
 
     status = "PASS" if result["pass"] else "FAIL"
     click.echo(f"[{status}] {path}")
