@@ -1,5 +1,8 @@
 """Tests for domain models — ConversionJob and SlideMetadata."""
 
+import pickle
+
+from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff_gui.models import ConversionJob, SlideMetadata
 
 
@@ -36,6 +39,53 @@ class TestConversionJob:
         job = ConversionJob(input_path="/in.svs", output_path="")
         kw = job.to_converter_kwargs()
         assert kw["output_ometiff"] is None
+
+    def test_conversion_config_is_authoritative_shape(self):
+        job = ConversionJob(
+            input_path="/in.svs",
+            output_path="/out.ome.tiff",
+            tile_size=512,
+            compression="none",
+            compressionargs={"level": 80},
+        )
+
+        config = job.to_convert_config()
+
+        assert isinstance(config, ConvertConfig)
+        assert config.input_svs == "/in.svs"
+        assert config.output_ometiff == "/out.ome.tiff"
+        assert config.tile_size == 512
+        assert config.compression is None
+        assert config.compressionargs == {"level": 80}
+
+    def test_from_convert_config_preserves_gui_job_fields(self):
+        config = ConvertConfig(
+            input_svs="/in.svs",
+            output_ometiff="/out.ome.tiff",
+            tile_size=512,
+            compression="jpeg",
+            compressionargs={"level": 85},
+        )
+
+        job = ConversionJob.from_convert_config(config, request_id="abc123")
+
+        assert job.input_path == "/in.svs"
+        assert job.output_path == "/out.ome.tiff"
+        assert job.tile_size == 512
+        assert job.compression == "jpeg"
+        assert job.compressionargs == {"level": 85}
+        assert job.request_id == "abc123"
+
+    def test_converter_kwargs_are_pickle_safe(self):
+        job = ConversionJob(
+            input_path="/in.svs",
+            output_path="/out.ome.tiff",
+            compressionargs={"level": 85},
+        )
+
+        kwargs = job.to_converter_kwargs()
+
+        assert pickle.loads(pickle.dumps(kwargs)) == kwargs
 
 
 class TestSlideMetadata:

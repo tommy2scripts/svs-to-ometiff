@@ -3,6 +3,7 @@
 import pytest
 
 from svs_to_ometiff_gui.serve import _estimate_percent
+from svs_to_ometiff_gui.services import build_progress_event
 
 
 class TestTileRowParsing:
@@ -66,3 +67,47 @@ class TestUnknownMessages:
 
     def test_whitespace_only(self):
         assert _estimate_percent("   ") is None
+
+
+class TestStructuredProgressEvents:
+    """Structured progress fields are the primary GUI progress seam."""
+
+    def test_explicit_percent_wins_over_unparseable_message(self):
+        event = build_progress_event(
+            "free-form display text with no percent",
+            percent=37.5,
+            phase="custom_phase",
+        )
+
+        assert event == {
+            "message": "free-form display text with no percent",
+            "percent": 37.5,
+            "phase": "custom_phase",
+        }
+
+    def test_legacy_message_percent_is_fallback_only(self):
+        event = build_progress_event("Tile row 10 of 20")
+
+        assert event == {
+            "message": "Tile row 10 of 20",
+            "percent": pytest.approx(35.0),
+        }
+
+    def test_extra_fields_are_preserved_for_batch_events(self):
+        event = build_progress_event(
+            "Writing output",
+            percent=86.0,
+            phase="writing_ometiff",
+            file="slide.svs",
+            file_idx=2,
+            total_files=5,
+        )
+
+        assert event == {
+            "message": "Writing output",
+            "percent": 86.0,
+            "phase": "writing_ometiff",
+            "file": "slide.svs",
+            "file_idx": 2,
+            "total_files": 5,
+        }

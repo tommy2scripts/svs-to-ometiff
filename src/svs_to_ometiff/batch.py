@@ -16,37 +16,11 @@ from typing import Any, Optional
 import click
 
 from svs_to_ometiff import __version__
+from svs_to_ometiff.batch_plan import (
+    find_duplicate_output_paths,
+    output_path_for_input,
+)
 from svs_to_ometiff.converter import convert
-
-
-def _output_path_for_input(svs_path: str, output_dir: Optional[str]) -> str:
-    stem = Path(svs_path).stem
-    if output_dir is not None:
-        return str(Path(output_dir) / f"{stem}.ome.tiff")
-    return str(Path(svs_path).parent / f"{stem}.ome.tiff")
-
-
-def _normalized_output_path(path: str) -> str:
-    return str(Path(path).resolve()).casefold()
-
-
-def _find_duplicate_output_paths(
-    files: list[str],
-    output_dir: Optional[str],
-) -> dict[str, list[str]]:
-    outputs: dict[str, tuple[str, list[str]]] = {}
-    for svs_path in files:
-        out_path = _output_path_for_input(svs_path, output_dir)
-        key = _normalized_output_path(out_path)
-        if key not in outputs:
-            outputs[key] = (out_path, [])
-        outputs[key][1].append(svs_path)
-
-    return {
-        out_path: input_paths
-        for out_path, input_paths in outputs.values()
-        if len(input_paths) > 1
-    }
 
 
 def _parse_json_dict(
@@ -181,7 +155,7 @@ def main(
     if output_dir is not None:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    duplicate_outputs = _find_duplicate_output_paths(files, output_dir)
+    duplicate_outputs = find_duplicate_output_paths(files, output_dir)
     if duplicate_outputs:
         click.echo("Batch output path collision detected:", err=True)
         for out_path, input_paths in duplicate_outputs.items():
@@ -206,7 +180,7 @@ def main(
     t_total = time.time()
 
     for i, svs_path in enumerate(files, start=1):
-        out_path = _output_path_for_input(svs_path, output_dir)
+        out_path = output_path_for_input(svs_path, output_dir)
 
         click.echo(f"[{i}/{len(files)}] {svs_path} -> {out_path}")
 
