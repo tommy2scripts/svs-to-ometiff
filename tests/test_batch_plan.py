@@ -10,11 +10,15 @@ from svs_to_ometiff.batch_plan import (
 
 
 def test_output_path_for_input_defaults_to_source_folder():
-    assert output_path_for_input("/slides/A01.svs", None) == "/slides/A01.ome.tiff"
+    assert output_path_for_input("/slides/A01.svs", None) == str(
+        Path("/slides") / "A01.ome.tiff"
+    )
 
 
 def test_output_path_for_input_uses_explicit_output_dir():
-    assert output_path_for_input("/slides/A01.svs", "/converted") == "/converted/A01.ome.tiff"
+    assert output_path_for_input("/slides/A01.svs", "/converted") == str(
+        Path("/converted") / "A01.ome.tiff"
+    )
 
 
 def test_duplicate_stems_collide_in_same_output_dir():
@@ -24,7 +28,10 @@ def test_duplicate_stems_collide_in_same_output_dir():
     )
 
     assert duplicates == {
-        "/converted/A01.ome.tiff": ["/run1/A01.svs", "/run2/A01.svs"]
+        str(Path("/converted") / "A01.ome.tiff"): [
+            "/run1/A01.svs",
+            "/run2/A01.svs",
+        ]
     }
 
 

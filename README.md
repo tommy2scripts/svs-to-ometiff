@@ -140,6 +140,8 @@ Batch-convert a directory or glob:
 ```bash
 svs-to-ometiff-batch slides/ --output-dir converted/
 svs-to-ometiff-batch "/data/**/*.svs" --compression zlib
+svs-to-ometiff-batch slides/ --output-dir converted/ \
+  --skip-existing --manifest batch_manifest.json --verify
 ```
 
 Batch conversion reads each source `.svs` file and writes a new
@@ -148,6 +150,13 @@ SVS files. Choose an `--output-dir` outside the source directory if you want a
 clear separation between source slides and converted outputs. If multiple
 inputs would write the same destination filename, batch mode fails before
 starting any conversion.
+
+Batch mode does not overwrite an existing output unless `--force` is provided.
+Use `--skip-existing` for reruns that should leave already-created outputs in
+place. Use `--manifest batch_manifest.json` to write a machine-readable JSON
+record of converted, skipped, failed, and verification-failed files. Use
+`--verify` to run structural OME-TIFF verification after each successful
+conversion.
 
 Verify an output OME-TIFF:
 

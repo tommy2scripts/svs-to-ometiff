@@ -20,7 +20,17 @@ from svs_to_ometiff.batch_plan import (
     find_duplicate_output_paths,
     output_path_for_input,
 )
+from svs_to_ometiff.batch_manifest import (
+    BatchManifestRecord,
+    utc_now_iso,
+    write_json_manifest,
+)
 from svs_to_ometiff.converter import convert
+from svs_to_ometiff.verify import verify_ometiff
+
+
+class OutputExistsError(RuntimeError):
+    """Raised when a batch output exists and overwrite was not requested."""
 
 
 def _parse_json_dict(
@@ -108,6 +118,42 @@ def _parse_json_dict(
     help="Directory for temporary files (default: system temp dir). "
          "Use a local drive on Windows to avoid network-locking issues.",
 )
+@click.option(
+    "--skip-existing",
+    is_flag=True,
+    help="Skip files whose planned output already exists.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Allow overwriting existing output files.",
+)
+@click.option(
+    "--manifest",
+    default=None,
+    type=click.Path(),
+    help="Write a JSON batch manifest with per-file statuses.",
+)
+@click.option(
+    "--verify",
+    is_flag=True,
+    help="Run svs-to-ometiff-verify after each successful conversion.",
+)
+@click.option(
+    "--verify-existing",
+    is_flag=True,
+    help="With --skip-existing and --verify, verify skipped existing outputs.",
+)
+@click.option(
+    "--continue-on-error",
+    is_flag=True,
+    help="Continue processing remaining files after a failed file.",
+)
+@click.option(
+    "--fail-fast",
+    is_flag=True,
+    help="Stop at the first failed file.",
+)
 @click.version_option(version=__version__, prog_name="svs-to-ometiff-batch")
 def main(
     input_pattern: str,
@@ -121,6 +167,13 @@ def main(
     quiet: bool,
     verbose: bool,
     temp_dir: Optional[str],
+    skip_existing: bool,
+    force: bool,
+    manifest: Optional[str],
+    verify: bool,
+    verify_existing: bool,
+    continue_on_error: bool,
+    fail_fast: bool,
 ) -> None:
     """
     Batch-convert Aperio SVS files to pyramidal OME-TIFF.
@@ -141,6 +194,12 @@ def main(
             --temp-dir /local_nvme/svs_tmp
     """
     show_progress = verbose or not quiet
+    if continue_on_error and fail_fast:
+        raise click.UsageError("--continue-on-error and --fail-fast are mutually exclusive")
+    if skip_existing and force:
+        raise click.UsageError("--skip-existing and --force are mutually exclusive")
+    if verify_existing and not skip_existing:
+        raise click.UsageError("--verify-existing requires --skip-existing")
 
     # Resolve input files
     if Path(input_pattern).is_dir():
@@ -176,16 +235,50 @@ def main(
     click.echo()
 
     succeeded = 0
+    skipped = 0
     failed = 0
     t_total = time.time()
+    records: list[BatchManifestRecord] = []
+
+    def save_manifest() -> None:
+        if manifest is not None:
+            write_json_manifest(manifest, records)
 
     for i, svs_path in enumerate(files, start=1):
         out_path = output_path_for_input(svs_path, output_dir)
+        record = BatchManifestRecord(
+            input_path=str(svs_path),
+            output_path=str(out_path),
+            start_time=utc_now_iso(),
+        )
+        records.append(record)
 
         click.echo(f"[{i}/{len(files)}] {svs_path} -> {out_path}")
 
         try:
-            convert(
+            if Path(out_path).exists() and not force:
+                if skip_existing:
+                    record.output_size_bytes = Path(out_path).stat().st_size
+                    record.output_size_gb = record.output_size_bytes / 1e9
+                    if verify and verify_existing:
+                        verification = verify_ometiff(
+                            out_path,
+                            min_levels=num_levels,
+                            expected_tile_size=tile_size,
+                        )
+                        record.update_from_verification(verification)
+                    record.finish("skipped_existing")
+                    skipped += 1
+                    click.echo("  skipped: output already exists")
+                    save_manifest()
+                    click.echo()
+                    continue
+                raise OutputExistsError(
+                    f"Output already exists: {out_path}. Use --skip-existing "
+                    "to leave it unchanged or --force to overwrite it."
+                )
+
+            result = convert(
                 svs_path,
                 out_path,
                 tile_size=tile_size,
@@ -198,15 +291,42 @@ def main(
                 tile_progress_interval=tile_progress_interval,
                 temp_dir=temp_dir,
             )
-            succeeded += 1
+            record.update_from_conversion_result(result)
+            status = "converted"
+            if verify:
+                verification = verify_ometiff(
+                    out_path,
+                    min_levels=num_levels,
+                    expected_tile_size=tile_size,
+                )
+                record.update_from_verification(verification)
+                if not record.verify_pass:
+                    status = "verify_failed"
+                    failed += 1
+                else:
+                    succeeded += 1
+            else:
+                succeeded += 1
+            record.finish(status)
         except Exception as exc:
             click.echo(f"  ERROR: {exc}", err=True)
+            record.update_from_exception(exc)
+            record.finish("failed")
             failed += 1
+            save_manifest()
+            if fail_fast:
+                click.echo()
+                break
+        else:
+            save_manifest()
 
         click.echo()
 
     elapsed = time.time() - t_total
-    click.echo(f"Batch complete: {succeeded} succeeded, {failed} failed in {elapsed:.0f}s")
+    click.echo(
+        f"Batch complete: {succeeded} succeeded, {skipped} skipped, "
+        f"{failed} failed in {elapsed:.0f}s"
+    )
     if failed > 0:
         sys.exit(1)
 
