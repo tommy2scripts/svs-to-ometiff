@@ -127,6 +127,8 @@ Recommended workflow:
 
 ```bash
 svs-to-ometiff-inspect input.svs
+svs-to-ometiff input.svs output.ome.tiff --preflight-only \
+  --temp-dir local_tmp
 svs-to-ometiff input.svs output.ome.tiff \
   --tile-size 1024 \
   --compression zlib \
@@ -174,6 +176,12 @@ The converter uses disk-backed arrays for pyramid construction, but large slides
 can still need many gigabytes of free disk space and enough RAM for tile buffers,
 writer buffers, and the operating-system page cache. Start with one conversion
 at a time and verify available space before processing a batch.
+
+By default, single-file conversion runs a disk-space preflight before decoding.
+Use `--preflight-only` to inspect dimensions and estimate temp/output disk needs
+without writing an output file. Use `--temp-dir` to point preflight and
+conversion at a larger local SSD. `--no-preflight` is available for exceptional
+cases where the estimate is too conservative.
 
 For Xenium-style workflows, use `--edge-mode crop` unless you specifically need
 to preserve padded edge dimensions.

@@ -7,12 +7,19 @@ to pyramidal OME-TIFF with SubIFD linkage.
 
 import json
 import sys
+import tempfile
 from typing import Any, Optional
 
 import click
 
 from svs_to_ometiff import __version__
 from svs_to_ometiff.converter import convert
+from svs_to_ometiff.preflight import (
+    PreflightResult,
+    bytes_to_gb,
+    check_preflight,
+)
+from svs_to_ometiff.tile_reader import read_svs_metadata
 
 
 def _print_experimental_warning() -> None:
@@ -109,6 +116,23 @@ def _parse_json_dict(_ctx: click.Context, _param: click.Parameter,
     help="Directory for temporary files (default: system temp dir). "
          "Use a local drive on Windows to avoid network-locking issues.",
 )
+@click.option(
+    "--no-preflight",
+    is_flag=True,
+    help="Disable disk-space preflight checks.",
+)
+@click.option(
+    "--preflight-only",
+    is_flag=True,
+    help="Inspect source and report disk estimates without converting.",
+)
+@click.option(
+    "--disk-safety-factor",
+    default=1.3,
+    type=click.FloatRange(min=0, min_open=True),
+    show_default=True,
+    help="Multiplier applied to estimated temp and output disk requirements.",
+)
 @click.version_option(version=__version__, prog_name="svs-to-ometiff")
 def main(
     input_svs: str,
@@ -123,6 +147,9 @@ def main(
     quiet: bool,
     verbose: bool,
     temp_dir: Optional[str],
+    no_preflight: bool,
+    preflight_only: bool,
+    disk_safety_factor: float,
 ) -> None:
     """
     Convert an Aperio SVS file to pyramidal OME-TIFF.
@@ -145,10 +172,28 @@ def main(
     show_progress = verbose or not quiet
     tile_progress_interval = 1 if verbose else 20
 
+    if preflight_only and no_preflight:
+        raise click.UsageError("--preflight-only and --no-preflight are mutually exclusive")
+
     # Experimental warning
     _print_experimental_warning()
 
     try:
+        if not no_preflight:
+            metadata = read_svs_metadata(input_svs)
+            preflight = check_preflight(
+                width=int(metadata["width"]),
+                height=int(metadata["height"]),
+                output_path=output_ometiff,
+                temp_dir=temp_dir or tempfile.gettempdir(),
+                num_levels=num_levels,
+                downsample_factor=downsample_factor,
+                safety_factor=disk_safety_factor,
+            )
+            _print_preflight_result(preflight)
+            if preflight_only:
+                return
+
         convert(
             input_svs,
             output_ometiff,
@@ -166,6 +211,25 @@ def main(
     except Exception as exc:
         click.echo(f"Error: {type(exc).__name__}: {exc}", err=True)
         sys.exit(1)
+
+
+def _print_preflight_result(result: PreflightResult) -> None:
+    """Print concise, Windows-friendly preflight details."""
+    status = "PASS" if result.pass_ else "FAIL"
+    click.echo(f"Preflight: {status}")
+    click.echo(f"Source dimensions: {result.source_width} x {result.source_height}")
+    click.echo(f"Estimated full-res RGB: {bytes_to_gb(result.full_res_rgb_bytes):.2f} GB")
+    click.echo(f"Estimated pyramid temp data: {bytes_to_gb(result.pyramid_rgb_bytes):.2f} GB")
+    click.echo(
+        "Required temp space: "
+        f"{bytes_to_gb(result.required_temp_bytes):.2f} GB; "
+        f"available {bytes_to_gb(result.available_temp_bytes):.2f} GB"
+    )
+    click.echo(
+        "Required output space: "
+        f"{bytes_to_gb(result.required_output_bytes):.2f} GB; "
+        f"available {bytes_to_gb(result.available_output_bytes):.2f} GB"
+    )
 
 
 if __name__ == "__main__":

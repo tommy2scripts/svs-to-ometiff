@@ -43,6 +43,7 @@ def test_single_cli_passes_temp_dir(monkeypatch, tmp_path: Path) -> None:
             str(output),
             "--temp-dir",
             str(temp_dir),
+            "--no-preflight",
             "--quiet",
         ],
     )
