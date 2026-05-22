@@ -68,7 +68,7 @@ def build_ome_xml(
             '    <ObjectiveSettings ID="Objective:0"/>\n'
         )
 
-    return (
+    xml_str = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<OME xmlns="http://www.openmicroscopy.org/Schemas/OME/2016-06"\n'
         '     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
@@ -96,6 +96,7 @@ def build_ome_xml(
         '  </Image>\n'
         '</OME>'
     )
+    return "".join(c if ord(c) < 128 else f"&#{ord(c)};" for c in xml_str)
 
 
 def _validate_rgb_level(level: np.ndarray, index: int) -> None:

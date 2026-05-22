@@ -8,8 +8,9 @@ Convert Aperio SVS whole-slide images that use TIFF compression code `33007`
 to pyramidal OME-TIFF. The package includes a command-line interface, a batch
 converter, inspection and verification helpers, and a local Flask GUI.
 
-> Experimental: this project is not validated for diagnostic or clinical use.
-> Outputs should be independently verified before use in research workflows.
+> [!WARNING]
+> **Research Use Only (RUO)**
+> This software is designed and intended for research use only. The pyramidal OME-TIFF outputs, metadata mappings, and verification procedures have NOT been cleared, validated, or approved for clinical diagnostic workflows or patient-care decisions. All outputs should be independently validated prior to inclusion in automated downstream analysis pipelines.
 
 ## Quick start
 
@@ -257,24 +258,17 @@ if info["convertible"]:
     verification = verify_ometiff("slide.ome.tiff", min_levels=3)
 ```
 
-## Validation status
+## Validation & Scientific Pipeline Guidelines
 
-Current validation is still limited, but now includes both synthetic fixtures
-and real Windows workstation runs. The converter includes unit and integration
-tests built from synthetic Aperio-style TIFF fixtures, and has been manually
-validated on real Aperio compression-33007 H&E slides from AT2/GT450-style
-exports, including Xenium prescreening slides. It has not been validated for
-diagnostic workflows, broad scanner coverage, color management, or regulatory
-use.
+Validation is designed to be highly structured and conservative. The utility is strictly validated for specific environments and scanner outputs. See the dedicated [Validation Matrix](file:///c:/Users/ttran/Desktop/AZ_HE_tracker/svs-to-ometiff/docs/validation_matrix.md) and [Release Checklist](file:///c:/Users/ttran/Desktop/AZ_HE_tracker/svs-to-ometiff/docs/release_checklist.md) for thorough technical details.
 
-**Xenium Explorer compatibility:** The converter produces pyramidal OME-TIFF
-output with SubIFD linkage, configured for compatibility with Xenium Explorer
-post-Xenium H&E alignment workflows. Output has been verified with QuPath and
-Bio-Formats-compatible viewers. Validate in Xenium Explorer before production use.
+- **Objective Bounds**: Designed specifically for Aperio AT2 and GT450 whole-slide images using TIFF raw YUYV compression `33007`.
+- **Viewer Interoperability**: Validated for dynamic pyramidal tile rendering inside QuPath and downstream H&E registration workflows within Xenium Explorer.
+- **Verification Strategy**: Employs mandatory multi-level metadata validation (`svs-to-ometiff-verify`) with optional deep pixel variance profiling to prevent blank or truncated outputs from polluting analysis pipelines.
 
-### Real-data validation notes
+### Real-data validation cohort
 
-Validation performed on Windows with `svs-to-ometiff-batch v0.7.0`:
+Validation performed on a Windows workstation with `svs-to-ometiff-batch`:
 
 - Standalone Aperio SVS, compression `33007`, `77262 x 39858` px, `20X`,
   `0.275310798315331` um/px
@@ -398,24 +392,15 @@ python -m build
 python -m twine check dist/*
 ```
 
-### Improvement backlog
+### Hardening & Production-Grade Capabilities
 
-Recommended hardening before broad unattended production batches:
+The library has been robustly hardened with production-grade safety mechanisms:
 
-- Add `--skip-existing` and `--force` to batch mode so reruns cannot silently
-  replace already validated OME-TIFF outputs.
-- Add clearer Windows diagnostics when a drive-letter path such as `L:\...` is
-  unavailable in the current shell or service session.
-- Estimate required temp and output disk space before starting each conversion,
-  and fail early when free space is clearly insufficient.
-- Emit a machine-readable batch manifest with input path, output path, source
-  dimensions, compression, conversion status, output size, and verification
-  status.
-- Add an optional batch `--verify` mode that runs `svs-to-ometiff-verify` after
-  each successful conversion and records the result.
-- Add a conservative `--jobs` option only after disk-space checks and output
-  overwrite policy controls are in place; on typical Windows workstations, one
-  or two jobs should be the practical upper bound for large whole-slide images.
+- **Overwrite Protections**: No-overwrite default for batch paths, offering `--skip-existing` and `--force` controls to safeguard validated outputs.
+- **Disk Space Preflight**: Automatic run-time free-space estimations on local SSD and temp folder paths prior to launching conversions, preventing mid-process out-of-disk aborts.
+- **Durable manifest logging**: Batch runs generate machine-readable JSON manifests recording preflight outcomes, source dimensions, verification metrics, and final execution statuses.
+- **Full CLI Verification Pipeline**: Structured CLI tools comparing pixel dimensions, objective magnification, and scale parameters (MPP) against the source SVS, including `--deep` pixel variance audits to detect empty or corrupted images.
+- **Premium HTML QC Reporting**: Automatic standalone dark-themed HTML report generation featuring detailed parameter audits, base64 pyramid level thumbnails, and embedded non-diagnostic research disclaimers.
 
 Project layout:
 

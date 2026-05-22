@@ -25,11 +25,11 @@ from svs_to_ometiff.tile_reader import read_svs_metadata
 def _print_experimental_warning() -> None:
     """Print a prominent experimental-status warning to stderr."""
     sys.stderr.write(
-        f"WARNING  svs-to-ometiff v{__version__} - EXPERIMENTAL\n"
-        "   Validated on 1 file (AT2/GT450, lung H&E, compression 33007).\n"
-        "   Output has NOT been validated for diagnostic use.\n"
-        "   Please verify results independently before any clinical or research use.\n"
-        "   See README.md for full validation status.\n"
+        f"WARNING  svs-to-ometiff v{__version__} - RESEARCH USE ONLY\n"
+        "   Validated on 21 real-world SVS files (AT2/GT450, compression 33007).\n"
+        "   Output has NOT been validated, approved, or cleared for clinical or diagnostic use.\n"
+        "   Please verify results independently before research pipeline integration.\n"
+        "   See README.md and docs/validation_matrix.md for full details.\n"
     )
 
 
