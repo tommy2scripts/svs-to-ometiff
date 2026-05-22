@@ -83,9 +83,12 @@ def check_preflight(
     num_levels: int,
     downsample_factor: int,
     safety_factor: float,
-    disk_usage: DiskUsageFn = shutil.disk_usage,
+    disk_usage: DiskUsageFn | None = None,
 ) -> PreflightResult:
     """Estimate disk requirements and raise ``PreflightError`` if insufficient."""
+    if disk_usage is None:
+        disk_usage = shutil.disk_usage
+
     if safety_factor <= 0:
         raise ValueError(f"safety_factor must be positive, got {safety_factor}")
 

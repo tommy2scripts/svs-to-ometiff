@@ -9,6 +9,7 @@ on one file do not stop the rest.
 import glob
 import json
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -26,6 +27,12 @@ from svs_to_ometiff.batch_manifest import (
     write_json_manifest,
 )
 from svs_to_ometiff.converter import convert
+from svs_to_ometiff.preflight import (
+    PreflightError,
+    bytes_to_gb,
+    check_preflight,
+)
+from svs_to_ometiff.tile_reader import read_svs_metadata
 from svs_to_ometiff.verify import verify_ometiff
 
 
@@ -154,6 +161,23 @@ def _parse_json_dict(
     is_flag=True,
     help="Stop at the first failed file.",
 )
+@click.option(
+    "--no-preflight",
+    is_flag=True,
+    help="Disable disk-space preflight checks.",
+)
+@click.option(
+    "--preflight-only",
+    is_flag=True,
+    help="Inspect source and report disk estimates without converting.",
+)
+@click.option(
+    "--disk-safety-factor",
+    default=1.3,
+    type=click.FloatRange(min=0, min_open=True),
+    show_default=True,
+    help="Multiplier applied to estimated temp and output disk requirements.",
+)
 @click.version_option(version=__version__, prog_name="svs-to-ometiff-batch")
 def main(
     input_pattern: str,
@@ -174,6 +198,9 @@ def main(
     verify_existing: bool,
     continue_on_error: bool,
     fail_fast: bool,
+    no_preflight: bool,
+    preflight_only: bool,
+    disk_safety_factor: float,
 ) -> None:
     """
     Batch-convert Aperio SVS files to pyramidal OME-TIFF.
@@ -200,6 +227,8 @@ def main(
         raise click.UsageError("--skip-existing and --force are mutually exclusive")
     if verify_existing and not skip_existing:
         raise click.UsageError("--verify-existing requires --skip-existing")
+    if preflight_only and no_preflight:
+        raise click.UsageError("--preflight-only and --no-preflight are mutually exclusive")
 
     # Resolve input files
     if Path(input_pattern).is_dir():
@@ -278,6 +307,38 @@ def main(
                     "to leave it unchanged or --force to overwrite it."
                 )
 
+            if not no_preflight:
+                metadata = read_svs_metadata(svs_path)
+                preflight = check_preflight(
+                    width=int(metadata["width"]),
+                    height=int(metadata["height"]),
+                    output_path=out_path,
+                    temp_dir=temp_dir or tempfile.gettempdir(),
+                    num_levels=num_levels,
+                    downsample_factor=downsample_factor,
+                    safety_factor=disk_safety_factor,
+                )
+                record.update_from_preflight(preflight)
+                if verbose or not quiet:
+                    click.echo("  Preflight: PASS")
+                    click.echo(
+                        "    Required temp space: "
+                        f"{bytes_to_gb(preflight.required_temp_bytes):.2f} GB; "
+                        f"available {bytes_to_gb(preflight.available_temp_bytes):.2f} GB"
+                    )
+                    click.echo(
+                        "    Required output space: "
+                        f"{bytes_to_gb(preflight.required_output_bytes):.2f} GB; "
+                        f"available {bytes_to_gb(preflight.available_output_bytes):.2f} GB"
+                    )
+
+                if preflight_only:
+                    record.finish("preflight_passed")
+                    succeeded += 1
+                    save_manifest()
+                    click.echo()
+                    continue
+
             result = convert(
                 svs_path,
                 out_path,
@@ -308,6 +369,18 @@ def main(
             else:
                 succeeded += 1
             record.finish(status)
+        except PreflightError as exc:
+            click.echo("  Preflight: FAIL", err=True)
+            click.echo(f"  ERROR: {exc}", err=True)
+            record.preflight_pass = False
+            record.preflight_errors = str(exc).split("\n")
+            record.update_from_exception(exc)
+            record.finish("failed")
+            failed += 1
+            save_manifest()
+            if fail_fast:
+                click.echo()
+                break
         except Exception as exc:
             click.echo(f"  ERROR: {exc}", err=True)
             record.update_from_exception(exc)

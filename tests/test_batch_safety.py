@@ -80,7 +80,7 @@ def test_force_allows_existing_output_conversion(monkeypatch, tmp_path: Path) ->
     output = tmp_path / "slide.ome.tiff"
     output.write_text("existing", encoding="utf-8")
 
-    result = CliRunner().invoke(batch_cli.main, [str(tmp_path), "--force", "--quiet"])
+    result = CliRunner().invoke(batch_cli.main, [str(tmp_path), "--force", "--no-preflight", "--quiet"])
 
     assert result.exit_code == 0
     assert len(calls) == 1
@@ -105,7 +105,7 @@ def test_manifest_is_written_after_success(monkeypatch, tmp_path: Path) -> None:
 
     result = CliRunner().invoke(
         batch_cli.main,
-        [str(tmp_path), "--manifest", str(manifest), "--quiet"],
+        [str(tmp_path), "--manifest", str(manifest), "--no-preflight", "--quiet"],
     )
 
     assert result.exit_code == 0
@@ -132,7 +132,7 @@ def test_manifest_is_written_after_failure_with_continue_on_error(
 
     result = CliRunner().invoke(
         batch_cli.main,
-        [str(tmp_path), "--continue-on-error", "--manifest", str(manifest), "--quiet"],
+        [str(tmp_path), "--continue-on-error", "--manifest", str(manifest), "--no-preflight", "--quiet"],
     )
 
     assert result.exit_code == 1
@@ -171,7 +171,7 @@ def test_verify_records_verify_failed_status(monkeypatch, tmp_path: Path) -> Non
 
     result = CliRunner().invoke(
         batch_cli.main,
-        [str(tmp_path), "--verify", "--manifest", str(manifest), "--quiet"],
+        [str(tmp_path), "--verify", "--manifest", str(manifest), "--no-preflight", "--quiet"],
     )
 
     assert result.exit_code == 1
@@ -196,7 +196,7 @@ def test_batch_status_values_are_deterministic(monkeypatch, tmp_path: Path) -> N
 
     result = CliRunner().invoke(
         batch_cli.main,
-        [str(tmp_path), "--manifest", str(manifest), "--quiet"],
+        [str(tmp_path), "--manifest", str(manifest), "--no-preflight", "--quiet"],
     )
 
     assert result.exit_code == 0

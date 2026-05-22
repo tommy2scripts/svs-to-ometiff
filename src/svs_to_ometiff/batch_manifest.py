@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from svs_to_ometiff import __version__
+from svs_to_ometiff.preflight import PreflightResult
 
 
 def utc_now_iso() -> str:
@@ -41,6 +42,10 @@ class BatchManifestRecord:
     exception_type: Optional[str] = None
     exception_message: Optional[str] = None
     traceback_path: Optional[str] = None
+    preflight_pass: Optional[bool] = None
+    preflight_required_temp_gb: Optional[float] = None
+    preflight_required_output_gb: Optional[float] = None
+    preflight_errors: list[str] = field(default_factory=list)
 
     def finish(self, status: str, *, end_time: Optional[str] = None) -> None:
         """Mark the record complete and calculate runtime when possible."""
@@ -91,6 +96,15 @@ class BatchManifestRecord:
         """Populate exception fields from a failed conversion step."""
         self.exception_type = type(exc).__name__
         self.exception_message = str(exc)
+
+    def update_from_preflight(self, result: PreflightResult) -> None:
+        """Populate preflight fields from a PreflightResult."""
+        self.preflight_pass = result.pass_
+        self.preflight_required_temp_gb = round(result.required_temp_bytes / 1e9, 3)
+        self.preflight_required_output_gb = round(result.required_output_bytes / 1e9, 3)
+        self.preflight_errors = result.errors
+        self.source_width = result.source_width
+        self.source_height = result.source_height
 
 
 def write_json_manifest(

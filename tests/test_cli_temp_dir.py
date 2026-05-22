@@ -84,6 +84,7 @@ def test_batch_cli_passes_temp_dir(monkeypatch, tmp_path: Path) -> None:
             str(tmp_path),
             "--temp-dir",
             str(temp_dir),
+            "--no-preflight",
             "--quiet",
         ],
     )
@@ -146,6 +147,7 @@ def test_batch_cli_passes_compression_args(monkeypatch, tmp_path: Path) -> None:
             "jpeg",
             "--compression-args",
             '{"level": 85}',
+            "--no-preflight",
             "--quiet",
         ],
     )
