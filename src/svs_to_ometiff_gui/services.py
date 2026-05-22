@@ -16,6 +16,10 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Optional
 
+from svs_to_ometiff.batch_plan import (
+    find_duplicate_output_paths,
+    output_path_for_input,
+)
 from svs_to_ometiff.converter import convert
 from svs_to_ometiff.inspect import inspect_svs
 
@@ -31,7 +35,7 @@ _TILE_ROW_RE = re.compile(r"Tile row\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
 
 
 def estimate_percent(message: str) -> Optional[float]:
-    """Parse a converter progress message and return an estimated percent."""
+    """Parse a legacy converter progress message and return an estimated percent."""
     msg = message.strip()
 
     # Tile row progress → 10-60%
@@ -61,6 +65,24 @@ def estimate_percent(message: str) -> Optional[float]:
     return None
 
 
+def build_progress_event(message: str, **fields) -> dict:
+    """Build a GUI progress event from structured converter callback fields.
+
+    Structured fields are the primary progress seam. Human-readable message
+    parsing is retained only as a legacy Adapter when no explicit percent is
+    provided by the converter.
+    """
+    event: dict = {"message": message}
+    event.update(fields)
+    if event.get("percent") is None:
+        percent = estimate_percent(message)
+        if percent is not None:
+            event["percent"] = percent
+        else:
+            event.pop("percent", None)
+    return event
+
+
 def resolve_path(path: str) -> Optional[str]:
     """If path is a bare filename, search common directories for it."""
     if not path:
@@ -83,8 +105,7 @@ def resolve_path(path: str) -> Optional[str]:
 
 def batch_output_path(input_path: str, output_dir: str) -> str:
     """Return the GUI batch destination path for one input slide."""
-    base = Path(input_path).with_suffix("")
-    return str(Path(output_dir) / f"{base.name}.ome.tiff")
+    return output_path_for_input(input_path, output_dir)
 
 
 def find_duplicate_batch_outputs(
@@ -92,19 +113,7 @@ def find_duplicate_batch_outputs(
     output_dir: str,
 ) -> dict[str, list[str]]:
     """Return destination paths that would be written by multiple inputs."""
-    outputs: dict[str, tuple[str, list[str]]] = {}
-    for input_path in inputs:
-        out_path = batch_output_path(input_path, output_dir)
-        key = str(Path(out_path).resolve()).casefold()
-        if key not in outputs:
-            outputs[key] = (out_path, [])
-        outputs[key][1].append(input_path)
-
-    return {
-        out_path: input_paths
-        for out_path, input_paths in outputs.values()
-        if len(input_paths) > 1
-    }
+    return find_duplicate_output_paths(inputs, output_dir)
 
 
 def format_duplicate_batch_outputs(duplicates: dict[str, list[str]]) -> str:
@@ -145,14 +154,7 @@ def _run_single_conversion_worker(request_id: str, kwargs: dict, m_queue):
     _install_worker_signal_handlers()
 
     def progress_callback(message: str, **cb_kwargs):
-        event: dict = {"message": message}
-        percent = cb_kwargs.get("percent")
-        if percent is None:
-            percent = estimate_percent(message)
-        if percent is not None:
-            event["percent"] = percent
-        if "phase" in cb_kwargs:
-            event["phase"] = cb_kwargs["phase"]
+        event = build_progress_event(message, **cb_kwargs)
         m_queue.put((request_id, "progress", event))
 
     try:
@@ -195,22 +197,18 @@ def _run_batch_conversion_worker(request_id: str, inputs: list[str], output_dir:
             }))
 
             def progress_callback(message: str, current_file=filename, i=idx, **cb_kwargs):
-                event: dict = {
-                    "message": message,
-                    "file": current_file,
-                    "file_idx": i,
-                    "total_files": total_files,
-                }
-                percent = cb_kwargs.get("percent")
-                if percent is None:
-                    percent = estimate_percent(message)
+                event = build_progress_event(
+                    message,
+                    file=current_file,
+                    file_idx=i,
+                    total_files=total_files,
+                    **cb_kwargs,
+                )
+                percent = event.get("percent")
                 if percent is not None:
-                    event["percent"] = percent
                     event["overall_percent"] = ((i * 100) + percent) / total_files
                 else:
                     event["overall_percent"] = (i * 100) / total_files
-                if "phase" in cb_kwargs:
-                    event["phase"] = cb_kwargs["phase"]
                 m_queue.put((request_id, "progress", event))
 
             result = convert(

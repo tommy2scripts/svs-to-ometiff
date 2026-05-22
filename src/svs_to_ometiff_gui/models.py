@@ -4,8 +4,13 @@ Replaces raw dictionaries with typed dataclasses for conversion jobs
 and slide metadata, improving code clarity and enabling validation.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
+
+if TYPE_CHECKING:
+    from svs_to_ometiff.config import ConvertConfig
 
 
 @dataclass
@@ -18,21 +23,16 @@ class ConversionJob:
     compression: Optional[str] = "zlib"
     num_levels: int = 6
     downsample_factor: int = 2
-    edge_mode: str = "crop"
+    edge_mode: Literal["crop", "pad"] = "crop"
     temp_dir: Optional[str] = None
     request_id: str = ""
     compressionargs: Optional[dict[str, Any]] = None
 
-    def to_converter_kwargs(self) -> dict:
-        """Return kwargs suitable for passing to ``convert()``.
-
-        Delegates to :meth:`ConvertConfig.to_dict` so that config fields are
-        kept in sync.  The ``"none"`` → ``None`` normalization is handled by
-        ``ConvertConfig.__post_init__``.
-        """
+    def to_convert_config(self) -> "ConvertConfig":
+        """Return the authoritative core conversion configuration for this job."""
         from svs_to_ometiff.config import ConvertConfig
 
-        config = ConvertConfig(
+        return ConvertConfig(
             input_svs=self.input_path,
             output_ometiff=self.output_path or "",
             tile_size=self.tile_size,
@@ -43,6 +43,37 @@ class ConversionJob:
             temp_dir=self.temp_dir,
             compressionargs=self.compressionargs,
         )
+
+    @classmethod
+    def from_convert_config(
+        cls,
+        config: "ConvertConfig",
+        *,
+        request_id: str = "",
+    ) -> "ConversionJob":
+        """Build a GUI job from a normalized core conversion configuration."""
+        compression = "none" if config.compression is None else config.compression
+        return cls(
+            input_path=config.input_svs,
+            output_path=config.output_ometiff,
+            tile_size=config.tile_size,
+            compression=compression,
+            num_levels=config.num_levels,
+            downsample_factor=config.downsample_factor,
+            edge_mode=config.edge_mode,
+            temp_dir=config.temp_dir,
+            request_id=request_id,
+            compressionargs=config.compressionargs,
+        )
+
+    def to_converter_kwargs(self) -> dict:
+        """Return pickle-safe kwargs suitable for passing to ``convert()``.
+
+        Conversion option validation and normalization are delegated to
+        :class:`ConvertConfig`; this method is only the GUI worker Adapter that
+        preserves the current public ``convert`` call shape.
+        """
+        config = self.to_convert_config()
         d = config.to_dict()
         d["config_or_input_svs"] = d.pop("input_svs")
         if not self.output_path:
