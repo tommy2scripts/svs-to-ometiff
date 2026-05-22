@@ -8,6 +8,7 @@ structure using tifffile.
 import json
 import sys
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -15,6 +16,7 @@ import numpy as np
 import tifffile
 
 from svs_to_ometiff.tile_reader import read_svs_metadata
+from svs_to_ometiff.qc_report import generate_qc_html
 
 
 def _extract_physical_pixel_sizes(
@@ -295,6 +297,12 @@ def verify_ometiff(
     show_default=True,
     help="Float tolerance for MPP comparison.",
 )
+@click.option(
+    "--html",
+    "html_report",
+    type=click.Path(),
+    help="Path to save a standalone HTML QC report.",
+)
 def main(
     path: str,
     min_levels: int,
@@ -303,6 +311,7 @@ def main(
     json_output: bool,
     strict: bool,
     tolerance: float,
+    html_report: Optional[str],
 ) -> None:
     """Verify an OME-TIFF file's structure.
 
@@ -342,6 +351,15 @@ def main(
         for warning in result["warnings"]:
             result["errors"].append(f"Strict mode: {warning}")
         result["pass"] = False
+
+    # Generate standalone HTML QC report if requested
+    if html_report is not None:
+        try:
+            report_content = generate_qc_html(path, result, source_path=source)
+            Path(html_report).write_text(report_content, encoding="utf-8")
+        except Exception as exc:
+            result["errors"].append(f"Failed to generate HTML QC report: {exc}")
+            result["pass"] = False
 
     if json_output:
         click.echo(json.dumps(result, indent=2, sort_keys=True))

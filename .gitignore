@@ -15,6 +15,17 @@ __pycache__/
 dist/
 build/
 .venv/
+.DS_Store
+*.ome.tiff
+*.svs
+*.pid
+*.log
+*.sqlite3
+.eggs/
+*.egg-info/
+dist/
+build/
+.venv/
 .env
 .env.*
 *.pem
@@ -22,3 +33,4 @@ build/
 credentials*
 service_account*
 client_secret*
+temp_pytest/
