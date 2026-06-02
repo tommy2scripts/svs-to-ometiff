@@ -177,6 +177,8 @@ def test_parse_mpp_rejects_missing_field() -> None:
 def test_parse_mpp_rejects_non_positive_value() -> None:
     with pytest.raises(ValueError, match="MPP must be positive"):
         parse_mpp_from_description("Aperio|MPP = 0")
+    with pytest.raises(ValueError, match="MPP must be positive"):
+        parse_mpp_from_description("Aperio|MPP = -0.5")
 
 
 def test_decode_tile_payload_accepts_cropped_edge_payload() -> None:
