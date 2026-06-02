@@ -60,71 +60,9 @@ def _get_thumbnail_base64(path: str) -> Optional[str]:
         return None
 
 
-def generate_qc_html(path: str, result: dict[str, Any], source_path: Optional[str] = None) -> str:
-    """Generate a premium, responsive standalone HTML QC report."""
-    is_pass = result.get("pass", False)
-    status_text = "PASS" if is_pass else "FAIL"
-    status_color = "var(--green)" if is_pass else "var(--red)"
-    status_glow = "0 0 20px rgba(16, 185, 129, 0.2)" if is_pass else "0 0 20px rgba(239, 68, 68, 0.2)"
-
-    thumbnail_data = _get_thumbnail_base64(path)
-    thumbnail_html = ""
-    if thumbnail_data:
-        thumbnail_html = (
-            f'<div class="thumbnail-container">\n'
-            f'  <img src="{thumbnail_data}" class="thumbnail-img" alt="QC Thumbnail" />\n'
-            f'  <span class="thumbnail-label">Smallest Pyramid Level</span>\n'
-            f'</div>'
-        )
-    else:
-        thumbnail_html = (
-            '<div class="thumbnail-container empty">\n'
-            '  <span class="thumbnail-empty-icon">📷</span>\n'
-            '  <span>No Thumbnail Available</span>\n'
-            '  <span class="thumbnail-label-hint">Install Pillow for embedded thumbnails</span>\n'
-            '</div>'
-        )
-
-    # Escape all strings for XSS safety
-    escaped_path = html.escape(str(path))
-    escaped_source_path = html.escape(str(source_path)) if source_path else "None"
-    escaped_dtype = html.escape(str(result.get("dtype", "None")))
-    
-    levels_list = result.get("levels", [])
-    levels_rows = ""
-    for idx, lvl in enumerate(levels_list):
-        lvl_w, lvl_h = lvl[1], lvl[0]
-        levels_rows += f"<tr><td>Level {idx}</td><td>{lvl_w} x {lvl_h}</td><td>{html.escape(str(result.get('dtype', 'uint8')))}</td></tr>"
-
-    warnings_html = ""
-    if result.get("warnings"):
-        warnings_html += '<div class="alert-section warning-section"><h3>Warnings</h3><ul>'
-        for warn in result["warnings"]:
-            warnings_html += f"<li>⚠️ {html.escape(warn)}</li>"
-        warnings_html += "</ul></div>"
-
-    errors_html = ""
-    if result.get("errors"):
-        errors_html += '<div class="alert-section error-section"><h3>Errors / Failures</h3><ul>'
-        for err in result["errors"]:
-            errors_html += f"<li>❌ {html.escape(err)}</li>"
-        errors_html += "</ul></div>"
-
-    pretty_json = html.escape(str(result))  # Simpler fallback, or dumps
-    import json
-    try:
-        pretty_json = html.escape(json.dumps(result, indent=2, sort_keys=True))
-    except Exception:
-        pass
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quality Control Report - {escaped_path}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
+def _build_css(status_glow: str, status_color: str) -> str:
+    """Build the CSS block for the HTML report."""
+    return f"""<style>
     :root {{
       --bg: #0b0f19;
       --card-bg: #111827;
@@ -388,7 +326,77 @@ def generate_qc_html(path: str, result: dict[str, Any], source_path: Optional[st
       font-size: 0.85rem;
       color: var(--text-muted);
     }}
-  </style>
+  </style>"""
+
+
+def _build_thumbnail_html(thumbnail_data: Optional[str]) -> str:
+    """Build the thumbnail HTML section."""
+    if thumbnail_data:
+        return (
+            f'<div class="thumbnail-container">\n'
+            f'  <img src="{thumbnail_data}" class="thumbnail-img" alt="QC Thumbnail" />\n'
+            f'  <span class="thumbnail-label">Smallest Pyramid Level</span>\n'
+            f'</div>'
+        )
+    return (
+        '<div class="thumbnail-container empty">\n'
+        '  <span class="thumbnail-empty-icon">📷</span>\n'
+        '  <span>No Thumbnail Available</span>\n'
+        '  <span class="thumbnail-label-hint">Install Pillow for embedded thumbnails</span>\n'
+        '</div>'
+    )
+
+
+def _build_alerts_html(result: dict[str, Any]) -> tuple[str, str]:
+    """Build HTML sections for errors and warnings."""
+    warnings_html = ""
+    if result.get("warnings"):
+        warnings_html += '<div class="alert-section warning-section"><h3>Warnings</h3><ul>'
+        for warn in result["warnings"]:
+            warnings_html += f"<li>⚠️ {html.escape(warn)}</li>"
+        warnings_html += "</ul></div>"
+
+    errors_html = ""
+    if result.get("errors"):
+        errors_html += '<div class="alert-section error-section"><h3>Errors / Failures</h3><ul>'
+        for err in result["errors"]:
+            errors_html += f"<li>❌ {html.escape(err)}</li>"
+        errors_html += "</ul></div>"
+
+    return warnings_html, errors_html
+
+
+def _build_geometry_html(result: dict[str, Any]) -> str:
+    """Build the pyramid geometry table rows."""
+    levels_list = result.get("levels", [])
+    levels_rows = ""
+    dtype = html.escape(str(result.get("dtype", "uint8")))
+    for idx, lvl in enumerate(levels_list):
+        lvl_w, lvl_h = lvl[1], lvl[0]
+        levels_rows += f"<tr><td>Level {idx}</td><td>{lvl_w} x {lvl_h}</td><td>{dtype}</td></tr>"
+    return levels_rows
+
+
+def _build_json_html(result: dict[str, Any]) -> str:
+    """Build the formatted JSON metadata section."""
+    import json
+    try:
+        return html.escape(json.dumps(result, indent=2, sort_keys=True))
+    except Exception:
+        return html.escape(str(result))
+
+
+def _build_header_html(escaped_path: str, status_text: str, status_color: str, status_glow: str) -> str:
+    """Build the HTML head and page header."""
+    css = _build_css(status_glow, status_color)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quality Control Report - {escaped_path}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  {css}
 </head>
 <body>
   <div class="container">
@@ -398,13 +406,24 @@ def generate_qc_html(path: str, result: dict[str, Any], source_path: Optional[st
         <h2 style="font-size: 1.75rem; font-weight: 700; margin-top: 0.25rem;">Quality Control Report</h2>
       </div>
       <div class="badge">{status_text}</div>
-    </header>
+    </header>"""
 
-    {errors_html}
-    {warnings_html}
 
-    <div class="grid">
-      <div class="main-column">
+def _build_conformance_html(escaped_path: str, escaped_source_path: str, escaped_dtype: str, result: dict[str, Any]) -> str:
+    """Build the output conformance card."""
+    is_ome_color = 'var(--green)' if result.get('is_ome') else 'var(--red)'
+    is_ome_text = 'Yes' if result.get('is_ome') else 'No'
+
+    is_bigtiff_color = 'var(--green)' if result.get('is_bigtiff') else 'var(--red)'
+    is_bigtiff_text = 'Yes' if result.get('is_bigtiff') else 'No'
+
+    tile_width = result.get('tile_width', 'None')
+    tile_height = result.get('tile_height', 'None')
+
+    phys_size = result.get('physical_size_x')
+    mpp_text = f"{phys_size:.6f} µm" if phys_size is not None else 'Not Found'
+
+    return f"""
         <div class="card">
           <h2 class="card-title">Output Conformance</h2>
           <ul class="meta-list">
@@ -418,19 +437,15 @@ def generate_qc_html(path: str, result: dict[str, Any], source_path: Optional[st
             </li>
             <li class="meta-item">
               <span class="meta-label">Conforms to OME Metadata</span>
-              <span class="meta-val" style="color: {'var(--green)' if result.get('is_ome') else 'var(--red)'};">
-                {'Yes' if result.get('is_ome') else 'No'}
-              </span>
+              <span class="meta-val" style="color: {is_ome_color};">{is_ome_text}</span>
             </li>
             <li class="meta-item">
               <span class="meta-label">Is BigTIFF Format</span>
-              <span class="meta-val" style="color: {'var(--green)' if result.get('is_bigtiff') else 'var(--red)'};">
-                {'Yes' if result.get('is_bigtiff') else 'No'}
-              </span>
+              <span class="meta-val" style="color: {is_bigtiff_color};">{is_bigtiff_text}</span>
             </li>
             <li class="meta-item">
               <span class="meta-label">Tile Size</span>
-              <span class="meta-val">{result.get('tile_width', 'None')} x {result.get('tile_height', 'None')}</span>
+              <span class="meta-val">{tile_width} x {tile_height}</span>
             </li>
             <li class="meta-item">
               <span class="meta-label">Dtype</span>
@@ -438,12 +453,38 @@ def generate_qc_html(path: str, result: dict[str, Any], source_path: Optional[st
             </li>
             <li class="meta-item">
               <span class="meta-label">Physical pixel size (MPP)</span>
-              <span class="meta-val">
-                {f"{result.get('physical_size_x'):.6f} µm" if result.get('physical_size_x') is not None else 'Not Found'}
-              </span>
+              <span class="meta-val">{mpp_text}</span>
             </li>
           </ul>
-        </div>
+        </div>"""
+
+
+def generate_qc_html(path: str, result: dict[str, Any], source_path: Optional[str] = None) -> str:
+    """Generate a premium, responsive standalone HTML QC report."""
+    is_pass = result.get("pass", False)
+    status_text = "PASS" if is_pass else "FAIL"
+    status_color = "var(--green)" if is_pass else "var(--red)"
+    status_glow = "0 0 20px rgba(16, 185, 129, 0.2)" if is_pass else "0 0 20px rgba(239, 68, 68, 0.2)"
+
+    thumbnail_data = _get_thumbnail_base64(path)
+    thumbnail_html = _build_thumbnail_html(thumbnail_data)
+
+    escaped_path = html.escape(str(path))
+    escaped_source_path = html.escape(str(source_path)) if source_path else "None"
+    escaped_dtype = html.escape(str(result.get("dtype", "None")))
+
+    warnings_html, errors_html = _build_alerts_html(result)
+    levels_rows = _build_geometry_html(result)
+    pretty_json = _build_json_html(result)
+
+    return f"""{_build_header_html(escaped_path, status_text, status_color, status_glow)}
+
+    {errors_html}
+    {warnings_html}
+
+    <div class="grid">
+      <div class="main-column">
+        {_build_conformance_html(escaped_path, escaped_source_path, escaped_dtype, result)}
 
         <div class="card">
           <h2 class="card-title">Pyramid Geometry</h2>
