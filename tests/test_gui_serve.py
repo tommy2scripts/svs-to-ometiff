@@ -40,6 +40,7 @@ def reset_globals() -> Generator[None, None, None]:
 def client():
     """Return a Flask test client with testing mode enabled."""
     app.config["TESTING"] = True
+    app.config["WTF_CSRF_ENABLED"] = False
     with app.test_client() as c:
         yield c
 

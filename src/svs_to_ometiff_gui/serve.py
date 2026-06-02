@@ -19,11 +19,14 @@ from queue import Queue
 from typing import Optional
 
 from flask import Flask, request, jsonify, Response, render_template
+from flask_wtf.csrf import CSRFProtect
 
 from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff.converter import convert
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", os.urandom(32))
+csrf = CSRFProtect(app)
 
 # In-memory store for progress queues
 _progress_queues: dict[str, Queue] = {}

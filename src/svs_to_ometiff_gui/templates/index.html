@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>svs-to-ometiff GUI</title>
 <style>
 *, *::before, *::after {
@@ -507,7 +508,10 @@ input[type="text"]:focus {
 
     fetch('/convert', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+      },
       body: JSON.stringify(payload)
     })
     .then(function(resp) {
@@ -594,7 +598,10 @@ input[type="text"]:focus {
     // Reveal in Finder (macOS) or file manager
     fetch('/open_folder', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+      },
       body: JSON.stringify({ path: dir })
     }).catch(function(){});
   });

@@ -47,6 +47,7 @@ dev = [
 ]
 gui = [
     "flask>=2.0",
+    "flask-wtf>=1.0",
 ]
 
 [project.scripts]
