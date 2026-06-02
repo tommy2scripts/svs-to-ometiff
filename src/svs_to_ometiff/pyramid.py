@@ -158,6 +158,11 @@ def build_pyramid_memmaps(
         dest = np.memmap(path, dtype=np.uint8, mode="w+", shape=(new_h, new_w, 3))
         crop_w = new_w * factor
 
+        # Pre-allocate a buffer for padding if needed to avoid repeated np.pad allocations.
+        pad_buffer = None
+        if edge_mode == "pad" and (prev_h % factor != 0 or prev_w % factor != 0):
+            pad_buffer = np.empty((factor, crop_w, 3), dtype=np.uint8)
+
         for y in range(new_h):
             src_y0 = y * factor
             src_y1 = min(src_y0 + factor, prev_h)
@@ -167,9 +172,13 @@ def build_pyramid_memmaps(
             if edge_mode == "pad" and (
                 strip.shape[0] != factor or strip.shape[1] != crop_w
             ):
-                pad_h = factor - strip.shape[0]
-                pad_w = crop_w - strip.shape[1]
-                strip = np.pad(strip, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
+                h_small, w_small = strip.shape[:2]
+                pad_buffer[:h_small, :w_small] = strip
+                if h_small < factor:
+                    pad_buffer[h_small:, :w_small] = strip[h_small - 1 : h_small, :]
+                if w_small < crop_w:
+                    pad_buffer[:, w_small:] = pad_buffer[:, w_small - 1 : w_small]
+                strip = pad_buffer
 
             dest[y] = (
                 strip.reshape(factor, new_w, factor, 3)
