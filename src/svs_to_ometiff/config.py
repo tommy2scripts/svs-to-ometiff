@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from svs_to_ometiff.utils import ProgressLogger
+from svs_to_ometiff.utils import ProgressLogger, validate_pyramid_params
 
 _SUPPORTED_COMPRESSION = (None, "lzw", "zlib", "deflate")
 
@@ -32,10 +32,9 @@ class ConvertConfig:
             raise ValueError("tile_size must be positive")
         if self.tile_size % 16 != 0:
             raise ValueError("tile_size must be divisible by 16")
-        if self.num_levels < 1:
-            raise ValueError("num_levels must be at least 1")
-        if self.downsample_factor < 2:
-            raise ValueError("downsample_factor must be at least 2")
+
+        validate_pyramid_params(self.num_levels, self.downsample_factor)
+
         if self.compression not in _SUPPORTED_COMPRESSION:
             raise ValueError(
                 f"compression must be one of {', '.join(repr(c) for c in _SUPPORTED_COMPRESSION)}, got {self.compression!r}"

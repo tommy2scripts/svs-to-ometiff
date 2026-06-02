@@ -12,7 +12,7 @@ from typing import Literal, Optional
 
 import numpy as np
 
-from svs_to_ometiff.utils import ProgressLogger, _log
+from svs_to_ometiff.utils import ProgressLogger, _log, validate_pyramid_params
 
 
 def build_pyramid(
@@ -35,14 +35,8 @@ def build_pyramid(
         raise ValueError(f"full_image must have shape (H, W, 3), got {full_image.shape}")
     if full_image.dtype != np.uint8:
         raise ValueError(f"full_image must be uint8, got {full_image.dtype}")
-    if num_levels < 1:
-        raise ValueError(f"num_levels must be at least 1, got {num_levels}")
-    if downsample_factor < 2:
-        raise ValueError(
-            f"downsample_factor must be at least 2, got {downsample_factor}"
-        )
-    if edge_mode not in {"crop", "pad"}:
-        raise ValueError(f"edge_mode must be 'crop' or 'pad', got {edge_mode!r}")
+
+    validate_pyramid_params(num_levels, downsample_factor, edge_mode)
 
     h, w = full_image.shape[:2]
     if num_levels > 1 and (h < downsample_factor or w < downsample_factor):
@@ -130,14 +124,8 @@ def build_pyramid_memmaps(
         raise ValueError(f"base_level must have shape (H, W, 3), got {base_level.shape}")
     if base_level.dtype != np.uint8:
         raise ValueError(f"base_level must be uint8, got {base_level.dtype}")
-    if num_levels < 1:
-        raise ValueError(f"num_levels must be at least 1, got {num_levels}")
-    if downsample_factor < 2:
-        raise ValueError(
-            f"downsample_factor must be at least 2, got {downsample_factor}"
-        )
-    if edge_mode not in {"crop", "pad"}:
-        raise ValueError(f"edge_mode must be 'crop' or 'pad', got {edge_mode!r}")
+
+    validate_pyramid_params(num_levels, downsample_factor, edge_mode)
 
     os.makedirs(temp_dir, exist_ok=True)
     levels: list[np.ndarray] = [base_level]

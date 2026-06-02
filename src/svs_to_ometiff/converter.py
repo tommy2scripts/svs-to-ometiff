@@ -14,7 +14,7 @@ import numpy as np
 from svs_to_ometiff.config import ConvertConfig
 from svs_to_ometiff.pyramid import build_pyramid_memmaps
 from svs_to_ometiff.tile_reader import iter_svs_rgb_tiles, read_svs_metadata
-from svs_to_ometiff.utils import _log
+from svs_to_ometiff.utils import _log, validate_pyramid_params
 from svs_to_ometiff.writer import (
     write_pyramidal_ometiff_from_levels as write_pyramidal_ometiff,
 )
@@ -53,12 +53,8 @@ def estimate_peak_ram_bytes(
     """
     if width <= 0 or height <= 0:
         raise ValueError(f"Image dimensions must be positive, got {width}x{height}")
-    if num_levels < 1:
-        raise ValueError(f"num_levels must be at least 1, got {num_levels}")
-    if downsample_factor < 2:
-        raise ValueError(
-            f"downsample_factor must be at least 2, got {downsample_factor}"
-        )
+
+    validate_pyramid_params(num_levels, downsample_factor)
 
     full_res_bytes = width * height * 3
     # Add ~15 % overhead per lower level, weighted by level size
